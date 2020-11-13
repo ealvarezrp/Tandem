@@ -1,0 +1,4376 @@
+*** MODIFICACION CONTRATO 7051688-3                                       *
+***************************************************************************
+*                  CASA DE BOLSA INVERLAT, S.A. DE C.V.                   *
+***************************************************************************
+*                       Identificacion del Servidor                       *
+*                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~                       *
+* Sistema ......: SIBUR - Mercado de Capitales Casa de Bolsa              *
+* Abstraccion ..: Transacciones                                           *
+* Proceso.......: Batch que genera la informacion de Mercado de Capitales *
+* ....................................................................... *
+*                          Historial de Cambios                           *
+*                          ~~~~~~~~~~~~~~~~~~~~                           *
+* Num | Fecha         | Autor                                             *
+*     | Descripcion   |                                                   *
+* .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. *
+* 09    21/OCT/2015     Jose Eduardo Lozada Chong (jelozada)              *
+*       Modificación a reporte warrants se agrega columna CONTRATO        *
+* 08    02/JUL/2008     Alejandro Gabriel Pérez Rodríguez (AGPR)          *
+*       Modificación para adecuación a warrants de Mdo. CaCONTRATO        *
+* 07    08/AGO/2006     Luis Manuel Lazaro Nava (LMLN)                    *
+*       Instrumento LBON se comporta similar a BREM.                      *
+* 06    27/JUL/2006     Luis Manuel Lázaro Nava (LMLN)                    *
+*       Corrige la condicion de calculo de cupon en posicion NEBA.        *
+* 05    10/Jun/2005     Luis Manuel Lázaro Nava  (LMLN)                   *
+*       Modificaciones para esquema de caracteristicas por emisora.       *
+* 04    07/Ene/2005     Angel Alfonso Martínez Arroyo    (AAMA)           *
+*       Integrar Operaciones Mayores a 30 Anios          (30A)            *
+* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - *
+* 03    25/AGO/2004     Emilio G B   AUMENTA WSS-NUM-OPS (400)            *
+* 02    30/OCT/2002     LUIS LAZARO. AUMENTA WSS-NUM-OPS.                 *
+* 01    25/JUL/2000     gpbuenrostro                                      *
+*       Cambio en el formato del archivo OPERIES                          *
+* .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. *
+* 00    15/FEB/2000     MONICA RIOS SOSA                                  *
+*       Desarrollo Inicial                                                *
+***************************************************************************
+* Directivas de Compilacion "OBLIGATORIAS"
+?ENV COMMON;HIGHPIN;HIGHREQUESTERS;RUNNAMED
+*?DIAGNOSE-74;SUBSET (EXTENDED,SEG2)
+?CHECK 15
+?SQL (RELEASE2,PAGES 800);SQLMEM EXT
+?SAVEABEND
+?SAVE PARAM
+*==========================================
+* Directivas de Compilacion "TEMPORALES"
+?INSPECT
+?SYMBOLS
+**********************************************************************
+*                      IDENTIFICATION DIVISION                       *
+**********************************************************************
+ IDENTIFICATION DIVISION.
+
+ PROGRAM-ID.    CBMDPORI.
+
+**********************************************************************
+*                        ENVIRONMENT DIVISION                        *
+**********************************************************************
+
+ ENVIRONMENT DIVISION.
+
+ CONFIGURATION SECTION.
+    SOURCE-COMPUTER.    TANDEM.
+    OBJECT-COMPUTER.    TANDEM.
+
+?SOURCE $DESA12.SCOGLCPA.C85DEFPG (SPECIALNAMES)
+ FILE "$SYSTEM.SYSTEM.COBOLLIB"       IS COBOLLIB
+ FILE "$DCYC01.EOPACOJA.CFFECHAS" IS CFFECHAS
+ FILE "$DCYC01.EOPACOJA.CFFECINT" IS L-FECHAS
+ FILE "$DESA2.BCOLIOJA.CFCONEDO" IS L-CONEDO
+ FILE "$DESA2.BCOLIOJA.CFCALCMD" IS L-CALCMD
+ FILE "$DESA5.BMDGLOJA.XBCALMDP" IS L-CALMDP
+*- LMLN 05. Inicio
+ FILE "$DESA2.BADPROJA.CFCARINS" IS CARINS-LIB
+*- LMLN 05. Fin
+ SWITCH-4 ON STATUS IS CON-STATUS
+ .
+*
+ INPUT-OUTPUT SECTION.
+ FILE-CONTROL.
+
+ SELECT FILE-OPERIES ASSIGN TO OPERIES
+ RESERVE 8 AREAS
+ ORGANIZATION IS SEQUENTIAL
+ ACCESS MODE  IS SEQUENTIAL
+ FILE STATUS  IS ESS-CODX-FILE-STATUS-GRAL.
+
+**********************************************************************
+*                         DATA DIVISION                              *
+**********************************************************************
+
+ DATA DIVISION.
+
+ FILE SECTION.
+ FD FILE-OPERIES.
+ 01 RSS-REG-OPE PIC X(500).
+
+ WORKING-STORAGE SECTION.
+ 01 WSS-PTN                          PIC 9(04) BINARY VALUE ZERO.
+
+ 01 WSS-ARCH-VLD.
+    02 WSS-AV-ERR-COD                PIC S9(04) VALUE ZERO BINARY.
+    02 WSS-AV-NOM-INT                PIC X(24) VALUE SPACES.
+    02 WSS-AV-NOM-EXT                PIC X(35) VALUE SPACES.
+    02 WSS-AV-NOM-LNG                NATIVE-2 VALUE ZERO.
+    02 WSS-AV-NUM                    PIC S9(04) VALUE ZERO BINARY.
+    02 WSS-AV-BAN-ATB                NATIVE-2 VALUE ZEROS.
+    02 WSS-AV-MDO-ACCESO             NATIVE-2 VALUE ZERO.
+       88  W88-AV-LECTURA-ESCRITURA  VALUE 0.
+       88  W88-AV-LECTURA            VALUE 1.
+       88  W88-AV-ESCRITURA          VALUE 2.
+    02 WSS-AV-MDO-EXCLUSION          NATIVE-2 VALUE ZERO.
+       88  W88-AV-COMPARTIDO         VALUE 0.
+       88  W88-AV-EXCLUSIVO          VALUE 1.
+       88  W88-AV-PROTEGIDO          VALUE 3.
+    02 WSS-AV-OPCIONES               NATIVE-2 VALUE ZERO.
+    02 WSS-AV-ERROR                  NATIVE-2 VALUE ZERO.
+
+?SOURCE $DESA12.SCOGLCPA.C85DEFPG (WSS-VARS-STND-000)
+
+*Variables para editar los valores del archivo
+*-------------------------------
+ 01 DSS-VARS-EDICION.
+    03 DSS-VALOR-NOMINAL-EMI           PIC  ZZZZZZ.ZZZZZZZZ.
+    03 DSS-MONTO-NOMINAL               PIC  ------------.--.
+    03 DSS-TASA-MERCADO                PIC  ZZZZZZ.ZZZZZZZZ.
+    03 DSS-TASA-DESCUENTO              PIC  ZZZ.ZZZZZZZZ.
+    03 DSS-TASA-CUPON                  PIC  ZZZ.ZZZZZZZZ.
+    03 DSS-SOBRETASA                   PIC  ----.--------.
+    03 DSS-NUM-TITULOS                 PIC  ------------------.
+    03 DSS-PRECIO-INI                  PIC  ZZZZZZ.ZZZZZZZZ.
+    03 DSS-PRECIO-ACT                  PIC  ZZZZZZ.ZZZZZZZZ.
+    03 DSS-MONTO-INI                   PIC  ------------.--.
+    03 DSS-TASA-PACTADA                PIC  ZZZ.ZZZZZZZZ.
+    03 DSS-PRECIO-REGR                 PIC  ZZZZZZ.ZZZZZZZZ.
+    03 DSS-MONTO-REGR                  PIC  ------------.--.
+    03 DSS-PRECIO-VALMER               PIC  ZZZZZZ.ZZZZZZZZ.
+    03 DSS-MTM                         PIC  ------------.------.
+    03 DSS-TASA-CURVA                  PIC  ZZZZ.ZZZZZZZZ.
+
+*-------------------------------
+ 01 WSS-REG-OPE.
+    03 WSS-TIPO-INSTRUM                PIC  X(10).
+    03 WSS-EMISORA                     PIC  X(10).
+    03 WSS-SERIE                       PIC  X(08).
+    03 WSS-FECHA-EMISION               PIC  X(10).
+    03 WSS-FECHA-VENC-EMI              PIC  X(08).
+    03 WSS-VALOR-NOMINAL-EMI           PIC  X(15).
+    03 WSS-MONTO-NOMINAL               PIC  X(15).
+    03 WSS-TASA-MERCADO                PIC  X(15).
+    03 WSS-TASA-DESCUENTO              PIC  X(12).
+    03 WSS-FECHA-VENC-CUPON            PIC  X(12).
+    03 WSS-PLAZO-CUPON                 PIC  X(11).
+    03 WSS-PLAZO-VTO-CUPON             PIC  X(08).
+    03 WSS-TASA-CUPON                  PIC  X(12).
+    03 WSS-SOBRETASA                   PIC  X(13).
+    03 WSS-NUM-TITULOS                 PIC  X(18).
+    03 WSS-PRECIO-INI                  PIC  X(15).
+    03 WSS-MONTO-INI                   PIC  X(15).
+    03 WSS-FECHA-REGRESO               PIC  X(08).
+    03 WSS-TASA-PACTADA                PIC  X(12).
+*   03 WSS-PLAZO                       PIC  X(04).         AAMA - 30A
+    03 WSS-PLAZO                       PIC  X(06).
+    03 WSS-TIPO-POSIC                  PIC  X(09).
+    03 WSS-PRECIO-REGR                 PIC  X(15).
+    03 WSS-MONTO-REGR                  PIC  X(15).
+    03 WSS-PLAZO-VTO                   PIC  X(08).
+    03 WSS-DIVISA                      PIC  X(08).
+    03 WSS-PREC-INI-ACT                PIC  X(15).
+    03 WSS-PLAZO-TOT                   PIC  X(10).
+    03 WSS-PREC-VALMER                 PIC  X(15).
+    03 WSS-MTM                         PIC  X(19).
+    03 WSS-TASA-CURVA                  PIC  X(13).
+    03 WSS-TIPO-VALOR                  PIC  X(04).
+    03 WSS-SINT-SI-NO                  PIC  X(04).
+    03 WSS-RANGO-SI-NO                 PIC  X(04).
+    03 WSS-PLAZO-CUPON-CALC            PIC  X(13).
+** jelozada se agrega variable cobol para num contrato
+    03 WSS-NUM-CONTRATO                PIC  9(09).
+
+ 01 WSS-NUM-TITULOS-PROD-TXT    PIC ZZZZZZZZZZZZZZZZ.ZZ.
+ 01 WSS-NUM-TITULOS-PROD        PIC S9(16)V9(2) COMP.
+ 01 WSS-NUM-TITULOS-PROD-TMP    PIC S9(16)V9(2) COMP.
+ 01 WSS-NUM-TITULOS-INT                                 PIC S9(18) COMP.
+
+*----------*MFG
+*Variables para determinar indicar la fecha valor
+*-------------------------------
+ 01 WSS-TOTAL-TERM                     PIC S9(16).
+ 01 WSS-TERM                           PIC S9(13).
+ 01 WSS-RESTA-RESULT                   PIC S9(16).
+ 01 WSS-ORD-FECH-CAP                   PIC  9(08).
+ 01 WSS-ORD-FECH-LIQ                   PIC  9(08).
+*----------------*
+*Variables para obtener la fecha como parametro
+*-------------------------------
+ 01 WSS-PARX-TEXT-PARAMETRO            PIC X(30)       VALUE SPACES.
+ 01 WSS-PARN-FECH-PROCESO              PIC 9(08)       VALUE ZEROES.
+ 01 WSS-PARN-FECH-PROCESO-R REDEFINES WSS-PARN-FECH-PROCESO.
+    03 WSS-PARN-ANIO-PROCESO           PIC 9(04).
+    03 WSS-PARN-MES-PROCESO            PIC 9(02).
+    03 WSS-PARN-DIA-PROCESO            PIC 9(02).
+ 01 WSS-PARN-RESULTADO                 PIC S9(04) COMP VALUE ZEROES.
+ 01 WSS-PARX-TODO                      PIC X(120)      VALUE SPACES.
+ 01 WSS-PARX-TIPO-PROCESO              PIC X(08)       VALUE SPACES.
+ 01 WSS-PARX-MESA                      PIC X(04)       VALUE SPACES.
+
+ 01 WSS-VARS-REG-OPE.
+    03 WSS-SEP                         PIC X(01) VALUE ",".
+    03 WSS-REG-OPE-PNT                 PIC 9(04) VALUE ZERO BINARY.
+
+ 01 WSS-EDITA-DESC-EMI                 PIC X(10).
+ 01 WSS-EDITA-DESC-EMI-R REDEFINES WSS-EDITA-DESC-EMI.
+    03 WSS-PRIMER-C                    PIC X(01).
+    03 WSS-ULTIMOS-C                   PIC X(09).
+
+ 01  W-EDIASHABIL.
+      02  W-EDIASHABIL-FECHA-INI.
+          03 W-EDIASHABIL-FECHA-INI-AAAA  PIC  9(04) VALUE ZERO.
+          03 W-EDIASHABIL-FECHA-INI-MM    PIC  9(02) VALUE ZERO.
+          03 W-EDIASHABIL-FECHA-INI-DD    PIC  9(02) VALUE ZERO.
+      02 W-EDIASHABIL-FECHA-INI-NUM REDEFINES W-EDIASHABIL-FECHA-INI
+                                            PIC  9(08).
+      02 W-EDIASHABIL-FECHA-FIN.
+          03 W-EDIASHABIL-FECHA-FIN-AAAA  PIC  9(04) VALUE ZERO.
+          03 W-EDIASHABIL-FECHA-FIN-MM    PIC  9(02) VALUE ZERO.
+          03 W-EDIASHABIL-FECHA-FIN-DD    PIC  9(02) VALUE ZERO.
+      02 W-EDIASHABIL-FECHA-FIN-NUM REDEFINES W-EDIASHABIL-FECHA-FIN
+                                            PIC  9(08).
+      02 W-EDIASHABIL-DIAS-HAB            PIC S9(04) VALUE ZERO.
+      02 W-EDIASHABIL-DIAS-HAB-MTY        PIC S9(04) VALUE ZERO.
+      02 W-EDIASHABIL-RESULTADO           PIC  9(01) VALUE ZERO.
+
+ EXTENDED-STORAGE SECTION.
+*
+* Declaracion de variables host para SQL
+* ======================================
+?SOURCE $DESA12.SCOGLCPA.SQLDEFPG ( BEGIN-DECLARE-SECT )
+?SOURCE $DESA12.BADGRCPA.INVOKES  ( INVOKE-SCTOPROP )
+?SOURCE $DESA12.BADGRCPA.INVOKES  ( INVOKE-SPRODOPE )
+?SOURCE $DESA12.BADGRCPA.INVOKES  ( INVOKE-STRANSAC )
+?SOURCE $DESA12.BADGRCPA.INVOKES  ( INVOKE-STRAMDIN )
+?SOURCE $DESA12.BADGRCPA.INVOKES  ( INVOKE-SORDMDIN )
+?SOURCE $DESA12.BADGRCPA.INVOKES  ( INVOKE-SCVEMESA )
+?SOURCE $DESA12.BADGRCPA.INVOKES  ( INVOKE-SEMISORA )
+?SOURCE $DESA12.BADGRCPA.INVOKES  ( INVOKE-SCUPON   )
+?SOURCE $DESA12.BADGRCPA.INVOKES  ( INVOKE-SCONTRAT )
+?SOURCE $DESA12.BADGRCPA.INVOKES  ( INVOKE-SHISTCAM )
+?SOURCE $DESA12.BADGRCPA.INVOKES  ( INVOKE-SHISTUNI )
+?SOURCE $DESA12.BADGRCPA.INVOKES  ( INVOKE-SHISTASI )
+?SOURCE $DESA12.BADGRCPA.INVOKES  ( INVOKE-STASMERC )
+?SOURCE $DESA12.BADGRCPA.INVOKES  ( INVOKE-SINSUNIV )
+?SOURCE $DESA12.BADGRCPA.INVOKES  ( INVOKE-SINSTRUM )
+?SOURCE $DESA12.BADGRCPA.INVOKES  ( INVOKE-SCLAOPER )
+?SOURCE $DESA12.BADGRCPA.INVOKES  ( INVOKE-SMESACTO )
+?SOURCE $DESA12.BADGRCPA.INVOKES  ( INVOKE-SCTOINTE )
+?SOURCE $DESA12.BADGRCPA.INVOKES  ( INVOKE-SHISPOSI )
+?SOURCE $DESA12.BADGRCPA.INVOKES  ( INVOKE-SPOSIC   )
+
+ EXEC SQL INVOKE =SVECTOR  AS SVECTOR-REC  END-EXEC
+ EXEC SQL INVOKE =SINTETIC AS SINTETIC-REC  END-EXEC
+ EXEC SQL INVOKE =STASBREM AS STASBREM-REC  END-EXEC
+ EXEC SQL INVOKE =SOFERWAR AS SOFERWAR-REC  END-EXEC
+ EXEC SQL INVOKE =SVALWARR AS SVALWARR-REC  END-EXEC
+
+ 01 ESS-H-FECH-APLICACION              PIC  9(08).
+ 01 ESS-H-MESA                         PIC  X(04).
+ 01 ESS-NULL-IND                       PIC  S9(04) COMP.
+
+?SOURCE $DESA12.SCOGLCPA.SQLDEFPG ( END-DECLARE-SECT )
+?SOURCE $DESA12.SCOGLCPA.SQLDEFPG ( AUXILIARES-SQL )
+*
+* Declaracion de cursores SQL
+* ===========================
+?SOURCE $DESA12.BADPRCPA.CFHTCAM  ( CUR-HISTCAM-ULTIMO )
+?SOURCE $DESA12.BADPRCPA.CFHUNI   ( CUR-HISTUNI-ULTIMO )
+*-------------------------------
+ EXEC SQL
+      DECLARE CUR_TRAMDIN_RESUMEN CURSOR FOR
+      SELECT
+         CTOP_CVE_MESA              ,
+         PROP_CVE_INSTRUMENTO       ,
+         TRAN_CVE_PARTICION         ,
+         TRAN_NUMF_TRANSACCION      ,
+         TRAN_NUMF_ORDEN            ,
+         TRAN_FECH_APLICACION       ,
+         TRAN_NUM_CONTRATO          ,
+         TRAN_NUM_PRODUCTO          ,
+         TRAN_CVE_OPER              ,
+         ORMD_FECH_LIQUIDACION      ,
+         ORMD_TASA_PACTADA          ,
+         TRAN_IMPO_TRANSACCION      ,
+         TRMD_CVE_TIPO_SALDO        ,
+         TRMD_CODX_TIPO_CLIENTE     ,
+         TRMD_TIT_TRANSACCION       ,
+         TRMD_PRED_TRANSACCION      ,
+         TRMD_PLZO_DIAS             ,
+         TRMD_TASA_DESCUENTO        ,
+         TRMD_IMPO_PREMIO           ,
+         TRMD_IMPO_NETO             ,
+         TRMD_CVE_TIPO_ORDEN        ,
+         TRMD_CODX_STATUS_TIPO_ORDEN,
+         CVME_CODX_MOV_TITULO       ,
+         EMIS_CVE_TIPO_VALOR        ,
+         EMIS_DESC_VALOR            ,
+         EMIS_CVE_SERIE_VALOR       ,
+         EMIS_FECH_EMISION          ,
+         EMIS_FECH_VENCIMIENTO_RF   ,
+         EMIS_PREG_NOMINAL          ,
+         EMIS_NUM_CUPON_PAGO_RV     ,
+         EMIS_CVE_UNIDAD_VALUADORA  ,
+         EMIS_NUM_PERSONA_EMISOR    ,
+         EMIS_BAND_COBRA_IMPUESTOS_RV,
+         EMIS_PLZO_PAGO_CUPON_RF
+      FROM =SPRODOPE, =SCTOPROP, =SCVEMESA,
+           =STRANSAC, =STRAMDIN, =SORDMDIN, =SEMISORA
+      WHERE
+         EMIS_FECH_VENCIMIENTO_RF  >= :ESS-H-FECH-APLICACION              AND
+         PROP_NUM_PRODUCTO          = EMIS_NUM_PRODUCTO                   AND
+         CTOP_CVE_MESA              = :ESS-H-MESA                         AND
+         CTOP_CVE_INSTRUMENTO       = PROP_CVE_INSTRUMENTO                AND
+         CVME_CVE_OPER              IN ("VTOCPARE", "VTOVTARE")           AND
+         TRAN_FECH_APLICACION       >  :ESS-H-FECH-APLICACION             AND
+         TRAN_CVE_TIPO_TRANSACCION  = "MDIN"                              AND
+         TRAN_CODX_STATUS           = "ACTI"                              AND
+         TRAN_FECH_REGISTRO         <= :ESS-H-FECH-APLICACION             AND
+         TRAN_CVE_OPER              = CVME_CVE_OPER                       AND
+        (TRAN_NUM_CONTRATO          = CTOP_NUM_CONTRATO                   OR
+        (TRMD_NUM_CONTRATO_REF      = CTOP_NUM_CONTRATO                   AND
+         TRMD_CODX_TIPO_CLIENTE    <> "MEXM"))                            AND
+         TRAN_NUM_PRODUCTO          = PROP_NUM_PRODUCTO                   AND
+        (TRMD_CVE_PARTICION, TRMD_NUMF_TRANSACCION      =
+         TRAN_CVE_PARTICION, TRAN_NUMF_TRANSACCION)                       AND
+         TRMD_CODX_TIPO_CLIENTE     = CVME_CVE_TIPO_SOLICITANTE           AND
+         ORMD_NUMF_ORDEN            = TRAN_NUMF_ORDEN
+       ORDER BY
+             TRAN_NUM_PRODUCTO,
+             TRAN_FECH_APLICACION,
+             CVME_CODX_MOV_TITULO,
+             TRMD_CVE_TIPO_SALDO,
+             TRMD_PLZO_DIAS
+      BROWSE ACCESS
+ END-EXEC
+
+*-------------------------------
+ EXEC SQL
+      DECLARE CUR_TRAMDIN_CPA_VTA CURSOR FOR
+      SELECT
+         CTOP_CVE_MESA              ,
+         PROP_CVE_INSTRUMENTO       ,
+         TRAN_CVE_PARTICION         ,
+         TRAN_NUMF_TRANSACCION      ,
+         TRAN_NUMF_ORDEN            ,
+         TRAN_FECH_APLICACION       ,
+         TRAN_NUM_CONTRATO          ,
+         TRAN_NUM_PRODUCTO          ,
+         TRAN_CVE_OPER              ,
+         ORMD_FECH_LIQUIDACION      ,
+         ORMD_TASA_PACTADA          ,
+         TRAN_IMPO_TRANSACCION      ,
+         TRMD_CVE_TIPO_SALDO        ,
+         TRMD_CODX_TIPO_CLIENTE     ,
+         TRMD_TIT_TRANSACCION       ,
+         TRMD_PRED_TRANSACCION      ,
+         TRMD_PLZO_DIAS             ,
+         TRMD_TASA_DESCUENTO        ,
+         TRMD_IMPO_PREMIO           ,
+         TRMD_IMPO_NETO             ,
+         TRMD_CVE_TIPO_ORDEN        ,
+         TRMD_CODX_STATUS_TIPO_ORDEN,
+         CVME_CODX_MOV_TITULO       ,
+         EMIS_CVE_TIPO_VALOR        ,
+         EMIS_DESC_VALOR            ,
+         EMIS_CVE_SERIE_VALOR       ,
+         EMIS_FECH_EMISION          ,
+         EMIS_FECH_VENCIMIENTO_RF   ,
+         EMIS_PREG_NOMINAL          ,
+         EMIS_NUM_CUPON_PAGO_RV     ,
+         EMIS_CVE_UNIDAD_VALUADORA  ,
+         EMIS_NUM_PERSONA_EMISOR    ,
+         EMIS_BAND_COBRA_IMPUESTOS_RV,
+         EMIS_PLZO_PAGO_CUPON_RF
+      FROM =SPRODOPE, =SCTOPROP, =SCVEMESA,
+           =STRANSAC, =STRAMDIN, =SORDMDIN, =SEMISORA
+      WHERE
+         EMIS_FECH_VENCIMIENTO_RF  >= :ESS-H-FECH-APLICACION              AND
+         PROP_NUM_PRODUCTO          = EMIS_NUM_PRODUCTO                   AND
+         CTOP_CVE_MESA              = :ESS-H-MESA                         AND
+         CTOP_CVE_INSTRUMENTO       = PROP_CVE_INSTRUMENTO                AND
+         CVME_CVE_OPER              IN ("CPRADIRE", "VTASDIRE")           AND
+         TRAN_FECH_APLICACION       >  :ESS-H-FECH-APLICACION             AND
+         TRAN_CVE_TIPO_TRANSACCION  = "MDIN"                              AND
+         TRAN_CODX_STATUS           = "ACTI"                              AND
+         TRAN_FECH_REGISTRO         <= :ESS-H-FECH-APLICACION             AND
+         TRAN_CVE_OPER              = CVME_CVE_OPER                       AND
+        (TRAN_NUM_CONTRATO          = CTOP_NUM_CONTRATO                   OR
+        (TRMD_NUM_CONTRATO_REF      = CTOP_NUM_CONTRATO                   AND
+         TRMD_CODX_TIPO_CLIENTE    <> "MEXM"))                            AND
+         TRAN_NUM_PRODUCTO          = PROP_NUM_PRODUCTO                   AND
+        (TRMD_CVE_PARTICION, TRMD_NUMF_TRANSACCION      =
+         TRAN_CVE_PARTICION, TRAN_NUMF_TRANSACCION)                       AND
+         TRMD_CODX_TIPO_CLIENTE     = CVME_CVE_TIPO_SOLICITANTE           AND
+         ORMD_NUMF_ORDEN            = TRAN_NUMF_ORDEN
+       ORDER BY
+             TRAN_FECH_APLICACION,
+             TRAN_NUM_PRODUCTO,
+             CVME_CODX_MOV_TITULO,
+             TRMD_CVE_TIPO_SALDO
+      BROWSE ACCESS
+ END-EXEC
+
+*-------------------------------
+ EXEC SQL
+      DECLARE CUR_TASMERC_FECHA   CURSOR FOR
+      SELECT TASM_NUM_PRODUCTO,
+             TASM_CVE_TASA_LIDER,
+             TASM_VALOR_TASA_LIDER,
+             TASM_DIFERENCIAL,
+             TASM_TASA_MERCADO
+      FROM =STASMERC
+      WHERE
+         TASM_NUM_PRODUCTO = :TASM-NUM-PRODUCTO               AND
+         TASM_FECH_ACTUALIZA <= :TASM-FECH-ACTUALIZA          AND
+         TASM_FECH_ACTUALIZA >  :TASM-FECH-ACTUALIZA - 10000
+      ORDER BY TASM_FECH_ACTUALIZA DESC
+      BROWSE ACCESS
+ END-EXEC
+
+*-------------------------------
+ EXEC SQL
+      DECLARE CUR_SIN_ASIGNAR CURSOR FOR
+      SELECT
+             CTOP_CVE_INSTRUMENTO
+            ,ORMD_FECH_CAPTURA
+            ,INST_PRED_NOMINAL_DEFAULT
+            ,INST_CVE_INSTRUMENTO_BMV
+            ,ORMD_TASA_PACTADA
+            ,ORMD_TIT_ASIGNADOS
+            ,ORMD_PLZO_DD_ORDEN
+            ,ORMD_IMPO_REMANENTE
+            ,CVEO_CODX_TIPO_MOVIMIENTO
+        FROM
+            =SORDMDIN
+            JOIN =SCLAOPER
+               JOIN =SCTOPROP
+                  JOIN =SINSTRUM
+                    ON CTOP_CVE_INSTRUMENTO=INST_CVE_INSTRUMENTO
+                 ON ORMD_NUM_CONTRATO_SOLICITA=CTOP_NUM_CONTRATO
+              ON ORMD_CVE_OPER=CVEO_CVE_OPER
+       WHERE
+             CTOP_CVE_MESA = :ESS-H-MESA
+        AND  ORMD_CVE_TIPO_SOLICITANTE="MESA"
+        AND  ORMD_CODX_STATUS="PEAS"
+        AND  ORMD_FECH_CAPTURA <= :ESS-H-FECH-APLICACION
+        AND  ORMD_CVE_OPER IN ("CPRADIRE","VTASDIRE")
+        AND (ORMD_CVE_OPER>"CPRADIRA" AND
+             ORMD_CVE_OPER<"VTASDIRZ")
+        AND  ORMD_IMPO_ORDEN=0
+        AND  ORMD_NUM_INTERMEDIARIO>0
+        AND  CASE ORMD_IMPO_REMANENTE WHEN 0 THEN 0 ELSE 1 END=1
+      BROWSE ACCESS
+ END-EXEC
+
+*-------------------------------
+ EXEC SQL
+      DECLARE CUR_RANGO_INTE CURSOR FOR
+      SELECT
+            MESC_CVE_MESA,
+            ORMD_CVE_TIPO_SOLICITANTE,
+            ORMD_CVE_OPER,
+            CTOP_CVE_INSTRUMENTO,
+            ORMD_FECH_CAPTURA,
+            ORMD_FECH_LIQUIDACION,
+            ORMD_FECH_VTO_ORDEN,
+            ORMD_PLZO_DD_ORDEN,
+            ORMD_TASA_PACTADA,
+            ORMD_TIT_ASIGNADOS,
+            ORMD_IMPO_ORDEN,
+            ORMD_IMPO_PREMIO,
+            ORMD_NUMF_ORDEN,
+            ORMD_PRED_ASIGNACION
+      FROM
+          =SORDMDIN
+          JOIN =SMESACTO
+             JOIN =SCTOINTE
+               JOIN =SCTOPROP
+                 ON ORMD_NUM_CONTRATO_SOLICITA  = CTOP_NUM_CONTRATO
+             ON ORMD_NUM_CONTRATO_CONTRAPARTE = CTOI_NUM_CONTRATO
+          ON ORMD_NUM_CONTRATO_SOLICITA = MESC_NUM_CONTRATO
+      WHERE
+         MESC_CVE_MESA                = :ESS-H-MESA                        AND
+         ORMD_CVE_TIPO_SOLICITANTE    = "MESA"                             AND
+         ORMD_CODX_STATUS             = "PEAS"                             AND
+         ORMD_CVE_OPER IN ("INICPARE", "CPRADIRE", "INIVTARE", "VTASDIRE") AND
+         ORMD_FECH_LIQUIDACION           > :ESS-H-FECH-APLICACION          AND
+         ORMD_FECH_CAPTURA              <= :ESS-H-FECH-APLICACION
+      BROWSE ACCESS
+ END-EXEC
+
+*-------------------------------
+ EXEC SQL
+      DECLARE CUR_RANGO_TERC CURSOR FOR
+      SELECT
+            MESC_CVE_MESA
+            ,ORMD_CVE_TIPO_SOLICITANTE
+            ,ORMD_CVE_OPER
+            ,CTOP_CVE_INSTRUMENTO
+            ,ORMD_FECH_CAPTURA
+            ,ORMD_FECH_LIQUIDACION
+            ,ORMD_FECH_VTO_ORDEN
+            ,ORMD_PLZO_DD_ORDEN
+            ,ORMD_TASA_PACTADA
+            ,ORMD_TIT_ASIGNADOS
+            ,ORMD_IMPO_ORDEN
+            ,ORMD_IMPO_PREMIO
+            ,ORMD_NUM_CONTRATO_SOLICITA
+            ,ORMD_NUMF_ORDEN
+            ,ORMD_PRED_ASIGNACION
+        FROM
+            =SORDMDIN
+             JOIN =SMESACTO
+                JOIN =SCONTRAT
+                   JOIN =SCTOPROP
+                     ON ORMD_NUM_CONTRATO_CONTRAPARTE   = CTOP_NUM_CONTRATO
+                ON ORMD_NUM_CONTRATO_SOLICITA = CONT_NUM_CONTRATO
+            ON ORMD_NUM_CONTRATO_SOLICITA = MESC_NUM_CONTRATO
+        WHERE
+           MESC_CVE_MESA                   = :ESS-H-MESA                     AND
+           ORMD_CVE_TIPO_SOLICITANTE       = "TERC"                          AND
+           ORMD_CODX_STATUS                = "PEAS"                          AND
+           ORMD_CVE_OPER IN ("INICPARE", "CPRADIRE", "INIVTARE", "VTASDIRE") AND
+           ORMD_FECH_LIQUIDACION           > :ESS-H-FECH-APLICACION          AND
+           ORMD_FECH_CAPTURA              <= :ESS-H-FECH-APLICACION
+        BROWSE ACCESS
+ END-EXEC
+
+*-------------------------------
+ EXEC SQL
+      DECLARE CUR_RANGO_MESA CURSOR FOR
+      SELECT
+            MESC_CVE_MESA
+            ,ORMD_CVE_TIPO_SOLICITANTE
+            ,ORMD_CVE_OPER
+            ,CTOP_CVE_INSTRUMENTO
+            ,ORMD_FECH_CAPTURA
+            ,ORMD_FECH_LIQUIDACION
+            ,ORMD_FECH_VTO_ORDEN
+            ,ORMD_PLZO_DD_ORDEN
+            ,ORMD_TASA_PACTADA
+            ,ORMD_TIT_ASIGNADOS
+            ,ORMD_IMPO_ORDEN
+            ,ORMD_IMPO_PREMIO
+            ,ORMD_NUMF_ORDEN
+            ,ORMD_PRED_ASIGNACION
+      FROM
+          =SORDMDIN
+             JOIN =SMESACTO
+                JOIN =SCTOPROP
+                  ON ORMD_NUM_CONTRATO_SOLICITA = CTOP_NUM_CONTRATO
+             ON MESC_NUM_CONTRATO = ORMD_NUM_CONTRATO_SOLICITA
+     WHERE
+        MESC_CVE_MESA                   = :ESS-H-MESA            AND
+        ORMD_CVE_TIPO_SOLICITANTE       = "MEXM"                 AND
+        ORMD_CODX_STATUS                = "PEAS"                 AND
+        ORMD_CVE_OPER IN ("INIVTARM", "VTASDIRM")                AND
+        ORMD_FECH_LIQUIDACION           > :ESS-H-FECH-APLICACION AND
+        ORMD_FECH_CAPTURA              <= :ESS-H-FECH-APLICACION
+     BROWSE ACCESS
+ END-EXEC
+
+*-------------------------------
+ EXEC SQL
+      DECLARE CUR_EMIS_RANGO CURSOR FOR
+      SELECT
+         EMIS_NUM_PRODUCTO,
+         EMIS_CVE_TIPO_VALOR,
+         EMIS_DESC_VALOR,
+         EMIS_CVE_SERIE_VALOR,
+         EMIS_FECH_VENCIMIENTO_RF,
+         EMIS_FECH_EMISION,
+         EMIS_NUM_CUPON_PAGO_RV,
+         EMIS_CVE_UNIDAD_VALUADORA,
+         EMIS_NUM_PERSONA_EMISOR,
+         EMIS_NUM_CUPONES_EMITIDOS_RF,
+         EMIS_PLZO_PAGO_CUPON_RF,
+         EMIS_BAND_COBRA_IMPUESTOS_RV,
+         SINT_NUM_PRODUCTO
+      FROM =SEMISORA
+         JOIN =SPRODOPE
+            LEFT JOIN =SINTETIC
+              ON EMIS_NUM_PRODUCTO = SINT_NUM_PRODUCTO
+         ON EMIS_NUM_PRODUCTO = PROP_NUM_PRODUCTO
+      WHERE PROP_CVE_INSTRUMENTO = :PROP-CVE-INSTRUMENTO
+            AND EMIS_CODX_STATUS = "ACTI"
+      ORDER BY EMIS_FECH_VENCIMIENTO_RF
+      BROWSE ACCESS
+ END-EXEC
+
+*-------------------------------
+ EXEC SQL
+      DECLARE CUR_SHISTASI CURSOR FOR
+      SELECT
+         HTAI_TASA_VIGENTE
+      FROM =SHISTASI
+      WHERE HTAI_FECH_INI_VIGENCIA <= :ESS-H-FECH-APLICACION         AND
+            HTAI_FECH_FIN_VIGENCIA >= :ESS-H-FECH-APLICACION         AND
+            HTAI_CVE_INDICADOR_MERCADO = :HTAI-CVE-INDICADOR-MERCADO
+      ORDER BY HTAI_FECH_PUBLICACION DESC
+      BROWSE ACCESS
+ END-EXEC
+
+*-------------------------------
+ EXEC SQL
+        DECLARE CUR_WARR_PAS CURSOR FOR
+        SELECT
+            VECP_TASA
+          , VECP_TASA_RENDIMIENTO
+          , OFWA_DESC_VALOR
+          , OFWA_CVE_SERIE_VALOR
+          , OFWA_FECH_VENCIMIENTO
+          , OFWA_FECH_EMISION
+          , OFWA_PORC_RETORNABLE
+          , OFWA_PREC_LOTE
+          , VAWA_SLDO_TITULOS_EXTERNA
+          , (SUM(POSC_SLDO_TIT_INICIAL + POSC_TIT_ENTRADA - POSC_TIT_SALIDA)
+            + VAWA_SLDO_TITULOS_EXTERNA)
+          , OFWA_NUM_CONTRATO
+        FROM
+        =SOFERWAR,=SVECTOR,=SVALWARR,=SCTRSIS,=SEMISORA,=SPOSIC,=SCONTRAT
+        WHERE
+        OFWA_NUM_PRODUCTO         = VAWA_NUM_PRODUCTO
+        AND OFWA_FECH_VENCIMIENTO > CTSI_FECH_SISTEMA
+        AND EMIS_NUM_PRODUCTO     = OFWA_NUM_PRODUCTO
+        AND POSC_NUM_PRODUCTO     = OFWA_NUM_PRODUCTO
+        AND CONT_NUM_CONTRATO     = POSC_NUM_CONTRATO
+        AND CONT_NUM_USO_CONTRATO <> 10
+        AND POSC_FECH_POSICION >= CTSI_FECH_SISTEMA
+        AND VECP_TIPO_VALOR       = EMIS_CVE_TIPO_VALOR
+        AND VECP_EMISORA          = EMIS_DESC_VALOR
+        AND VECP_SERIE            = EMIS_CVE_SERIE_VALOR
+        AND CTSI_NUM_SISTEMA      = 3
+        AND VECP_FECH_PROCESO   = CTSI_FECH_SISTEMA
+        --AND VECP_FECH_PROCESO   = 20080613
+        AND VECP_PROVEEDOR        =   "VALMER"
+        AND VAWA_FECH_REGISTRO    = (SELECT MAX(B.VAWA_FECH_REGISTRO)
+        FROM =SVALWARR B WHERE B.VAWA_NUM_PRODUCTO = OFWA_NUM_PRODUCTO BROWSE ACCESS)
+        AND OFWA_EMB_OPCION = 0
+        GROUP BY 1,2,3,4,5,6,7,8,9,11
+        BROWSE ACCESS
+        UNION
+        SELECT
+            VECP_TASA
+          , VECP_TASA_RENDIMIENTO
+          , OFWA_DESC_VALOR
+          , OFWA_CVE_SERIE_VALOR
+          , OFWA_FECH_VENCIMIENTO
+          , OFWA_FECH_EMISION
+          , OFWA_PORC_RETORNABLE
+          , OFWA_PREC_LOTE
+          , VAWA_SLDO_TITULOS_EXTERNA
+          , VAWA_SLDO_TITULOS_EXTERNA
+          , OFWA_NUM_CONTRATO
+         FROM =SOFERWAR,=SVECTOR,=SVALWARR
+         ,=SCTRSIS
+         ,=SEMISORA
+         WHERE
+         OFWA_NUM_PRODUCTO         = VAWA_NUM_PRODUCTO
+         AND OFWA_NUM_PRODUCTO     = EMIS_NUM_PRODUCTO
+         AND OFWA_FECH_VENCIMIENTO > CTSI_FECH_SISTEMA
+         AND VECP_TIPO_VALOR       = EMIS_CVE_TIPO_VALOR
+         AND VECP_EMISORA          = EMIS_DESC_VALOR
+         AND VECP_SERIE            = EMIS_CVE_SERIE_VALOR
+         AND CTSI_NUM_SISTEMA      = 3
+         AND VECP_FECH_PROCESO   = CTSI_FECH_SISTEMA
+         --AND VECP_FECH_PROCESO   = 20080613
+        AND VECP_PROVEEDOR        =   "VALMER"
+        AND VAWA_FECH_REGISTRO    = (SELECT MAX(B.VAWA_FECH_REGISTRO) FROM =SVALWARR B
+                                          WHERE B.VAWA_NUM_PRODUCTO = OFWA_NUM_PRODUCTO
+                                           BROWSE ACCESS)
+        AND  OFWA_NUM_PRODUCTO NOT IN (SELECT DISTINCT(POSC_NUM_PRODUCTO) FROM =SPOSIC
+                                       ,=SCONTRAT
+                                       WHERE  POSC_FECH_POSICION >= CTSI_FECH_SISTEMA
+                                        AND CONT_NUM_CONTRATO     = POSC_NUM_CONTRATO
+                                      AND CONT_NUM_USO_CONTRATO <> 10
+                                     BROWSE ACCESS)
+        AND   OFWA_EMB_OPCION = 0
+        BROWSE ACCESS
+    END-EXEC
+
+*-------------------------------
+ EXEC SQL
+      DECLARE CUR_POSICION CURSOR FOR
+      SELECT
+          EMIS_NUM_PRODUCTO
+        , EMIS_CVE_TIPO_VALOR
+        , EMIS_DESC_VALOR
+        , EMIS_CVE_SERIE_VALOR
+        , EMIS_FECH_EMISION
+        , EMIS_PREG_NOMINAL
+        , EMIS_NUM_CUPON_PAGO_RV
+        , EMIS_FECH_VENCIMIENTO_RF
+        , EMIS_PLZO_PAGO_CUPON_RF
+        , PROP_CVE_INSTRUMENTO
+        , POSC_CVE_TIPO_SALDO
+        , SUM(POSC_SLDO_TIT_INICIAL  )
+        , SUM(POSC_TIT_ENTRADA       )
+        , SUM(POSC_TIT_SALIDA        )
+        , SUM(POSC_SLDO_IMPO_INICIAL )
+        , SUM(POSC_IMPO_ENTRADA      )
+        , SUM(POSC_IMPO_SALIDA       )
+        , POSC_FECH_APLICACION
+        , POSC_NUMF_POSICION
+        , POSC_NUM_CONTRATO
+        FROM =SPOSIC
+        JOIN =SPRODOPE
+        ON POSC_NUM_PRODUCTO = PROP_NUM_PRODUCTO
+        JOIN =SEMISORA
+        ON POSC_NUM_PRODUCTO = EMIS_NUM_PRODUCTO
+        AND EMIS_CVE_TIPO_EMISORA = "RFIJ"
+        WHERE
+        POSC_FECH_POSICION >= :ESS-H-FECH-APLICACION  AND
+        --POSC_FECH_POSICION >= 20080610  AND
+        POSC_NUM_CONTRATO IN (select distinct(OFWA_NUM_CONTRATO)
+                              from =SOFERWAR
+                              where OFWA_EMB_OPCION = 0
+                              browse access)
+        GROUP  by 1,2,3,4,5,6,7,8,9,10,11,18,19,20
+        BROWSE ACCESS
+        UNION
+        SELECT
+            EMIS_NUM_PRODUCTO
+          , EMIS_CVE_TIPO_VALOR
+          , EMIS_DESC_VALOR
+          , EMIS_CVE_SERIE_VALOR
+          , EMIS_FECH_EMISION
+          , EMIS_PREG_NOMINAL
+          , EMIS_NUM_CUPON_PAGO_RV
+          , EMIS_FECH_VENCIMIENTO_RF
+          , EMIS_PLZO_PAGO_CUPON_RF
+          , PROP_CVE_INSTRUMENTO
+          , POSC_CVE_TIPO_SALDO
+          , SUM(POSC_SLDO_TIT_INICIAL  )
+          , SUM(POSC_TIT_ENTRADA       )
+          , SUM(POSC_TIT_SALIDA        )
+          , SUM(POSC_SLDO_IMPO_INICIAL )
+          , SUM(POSC_IMPO_ENTRADA      )
+          , SUM(POSC_IMPO_SALIDA       )
+          , POSC_FECH_APLICACION
+          , POSC_NUMF_POSICION
+          , POSC_NUM_CONTRATO
+        FROM =SPOSIC
+        JOIN =SPRODOPE
+        ON POSC_NUM_PRODUCTO = PROP_NUM_PRODUCTO
+        JOIN =SEMISORA
+        ON POSC_NUM_PRODUCTO = EMIS_NUM_PRODUCTO
+        AND EMIS_CVE_TIPO_EMISORA = "RFIJ"
+        WHERE
+        POSC_FECH_POSICION >= :ESS-H-FECH-APLICACION  AND
+        --POSC_FECH_POSICION >= 20080610  AND
+        POSC_NUM_CONTRATO IN (177959, 177234, 70516883)
+        ORDER BY 11,1
+        GROUP  by 1,2,3,4,5,6,7,8,9,10,11,18,19,20
+        BROWSE ACCESS
+ END-EXEC
+
+*-------------------------------
+ EXEC SQL
+      DECLARE CUR_POSI_HIST CURSOR FOR
+      SELECT
+           EMIS_NUM_PRODUCTO
+         , EMIS_CVE_TIPO_VALOR
+         , EMIS_DESC_VALOR
+         , EMIS_CVE_SERIE_VALOR
+         , EMIS_FECH_EMISION
+         , EMIS_PREG_NOMINAL
+         , EMIS_NUM_CUPON_PAGO_RV
+         , EMIS_FECH_VENCIMIENTO_RF
+         , EMIS_PLZO_PAGO_CUPON_RF
+         , CTOP_CVE_INSTRUMENTO
+         , HPOS_CVE_TIPO_SALDO
+         , HPOS_SLDO_TIT_INICIAL
+         , HPOS_TIT_ENTRADA
+         , HPOS_TIT_SALIDA
+         , HPOS_SLDO_IMPO_INICIAL
+         , HPOS_IMPO_ENTRADA
+         , HPOS_IMPO_SALIDA
+         , HPOS_FECH_APLICACION
+         , HPOS_NUMF_POSICION
+         , HPOS_NUM_CONTRATO
+      FROM =SHISPOSI
+         JOIN =SCTOPROP
+            ON HPOS_NUM_CONTRATO = CTOP_NUM_CONTRATO
+         JOIN =SEMISORA
+            ON HPOS_NUM_PRODUCTO = EMIS_NUM_PRODUCTO
+      WHERE
+         HPOS_FECH_POSICION = :ESS-H-FECH-APLICACION  AND
+         CTOP_CVE_MESA      = :ESS-H-MESA
+      ORDER BY HPOS_CVE_TIPO_SALDO,
+               EMIS_NUM_PRODUCTO
+      BROWSE ACCESS
+ END-EXEC
+*
+*
+**********************************************************************
+*   Variables utilizadas como parametros para realizar llamados a    *
+*   servicios de informacion                                         *
+**********************************************************************
+*
+?SOURCE $DESA12.BCOLIDPA.CSSCOEDO ( LSSCOEDO )
+?SOURCE $DESA12.BCOLIDPA.CSSCALMD ( LSSTCOST )
+?SOURCE $DESA12.BCOLIDPA.CSSCALMD ( LSSTREND )
+?SOURCE $DESA12.BCOLIDPA.CSSCALMD ( LSSINDEV )
+?SOURCE $DESA12.BCOLIDPA.CSSCALMD ( LSSVNAJU )
+?SOURCE $DESA12.BCOLIDPA.CSSCALMD ( LSSFPREC )
+?SOURCE $DESA12.BCOLIDPA.CSSCALMD ( LSSPREC  )
+*
+*
+**********************************************************************
+*   Variables estandares para manejo del flujo del proceso y los     *
+*   mensajes de error                                                *
+**********************************************************************
+*
+?SOURCE $DESA12.SCOGLCPA.C85DEFPG ( ESS-VARS-STND-000 )
+?SOURCE $DESA12.SCOGLCPA.C85DEFPG ( ESS-VARS-STND-010 )
+?SOURCE $DESA12.SCOGLCPA.C85DEFPG ( ESS-VARS-STND-020 )
+*
+**********************************************************************
+*   Copy que declara el SQLCODE necesario para manejo de TMF         *
+**********************************************************************
+*
+?SOURCE $DESA12.SCOGLCPA.SQLDEFPG ( INCLUDE-SQLCODEX )
+ EXEC SQL INCLUDE SQLSA   END-EXEC
+*
+
+* Variables para calculo de fechas.
+ 01 ESS-FECH-1                         PIC  X(08).
+ 01 ESS-FECH-2                         PIC  X(08).
+*01 ESS-NUM-DIAS-COMP                  PIC S9(04) COMP.     AAMA - 30A
+ 01 ESS-NUM-DIAS-COMP                  PIC S9(06) COMP.
+*VARIABLE DE UTILIZACION PARA LA FUNCION SIGHABIL    AAMA - 30A
+ 01 ESS-PAIS                           PIC  X(04) VALUE "MX".
+
+ 01 ESS-BAND-FIN-SOFERWAR              PIC  X(01).
+    88 ES88-BAND-FIN-SOFERWAR-SI       VALUE "S".
+    88 ES88-BAND-FIN-SOFERWAR-NO       VALUE "N".
+
+ 01 ESS-BAND-FIN-STRAMDIN              PIC  X(01).
+    88 ES88-BAND-FIN-STRAMDIN-SI       VALUE "S".
+    88 ES88-BAND-FIN-STRAMDIN-NO       VALUE "N".
+
+ 01 ESS-BAND-FIN-SVECTOR               PIC  X(01).
+    88 ES88-BAND-FIN-SVECTOR-SI        VALUE "S".
+    88 ES88-BAND-FIN-SVECTOR-NO        VALUE "N".
+
+ 01 ESS-BAND-FIN-TASBREM               PIC  X(01).
+    88 ES88-BAND-FIN-TASBREM-SI        VALUE "S".
+    88 ES88-BAND-FIN-TASBREM-NO        VALUE "N".
+
+ 01 ESS-BAND-FIN-SIN-ASIGNAR           PIC  X(01) VALUE "N".
+    88 ES88-BAND-FIN-SIN-ASIGNAR-SI    VALUE "S".
+    88 ES88-BAND-FIN-SIN-ASIGNAR-NO    VALUE "N".
+
+ 01 ESS-BAND-CORTA-CUPON               PIC  X(01).
+    88 ES88-BAND-CORTA-CUPON-SI        VALUE "S".
+    88 ES88-BAND-CORTA-CUPON-NO        VALUE "N".
+
+ 01 ESS-CALCULA-TASA                   PIC  X(01).
+    88 ES88-CALCULA-TASA-SI            VALUE "S".
+    88 ES88-CALCULA-TASA-NO            VALUE "N".
+
+ 01 ESS-PROCESO-HOY                    PIC X(01).
+    88 ES88-PROCESO-HOY-NO             VALUE "N".
+    88 ES88-PROCESO-HOY-SI             VALUE "S".
+
+
+ 01 ESS-BAND-TASA-MERC                 PIC  X(01).
+    88 ES88-BAND-TASA-MERC-SI          VALUE "S".
+    88 ES88-BAND-TASA-MERC-NO          VALUE "N".
+
+ 01 ESS-BAND-TASA-VIG                  PIC  X(01).
+    88 ES88-BAND-TASA-VIG-SI           VALUE "S".
+    88 ES88-BAND-TASA-VIG-NO           VALUE "N".
+
+ 01 ESS-REVISA-TAB                     PIC  X(01).
+    88 ES88-REVISA-TAB-SI              VALUE "S".
+    88 ES88-REVISA-TAB-NO              VALUE "N".
+
+ 01 ESS-ENCONTRE-EMI                   PIC  X(01).
+    88 ES88-ENCONTRE-EMI-SI            VALUE "S".
+    88 ES88-ENCONTRE-EMI-NO            VALUE "N".
+
+ 01 ESS-BAND-FIN-OPS-RANGO             PIC  X(01) VALUE "N".
+    88 ES88-BAND-FIN-OPS-RANGO-SI      VALUE "S".
+    88 ES88-BAND-FIN-OPS-RANGO-NO      VALUE "N".
+
+ 01 ESS-BAND-FIN-POSICION              PIC  X(01) VALUE "N".
+    88 ES88-BAND-FIN-POSICION-SI       VALUE "S".
+    88 ES88-BAND-FIN-POSICION-NO       VALUE "N".
+
+ 01 ESS-BAND-FIN-EMIS-RANGO            PIC  X(01) VALUE "N".
+    88 ES88-BAND-FIN-EMIS-RANGO-SI     VALUE "S".
+    88 ES88-BAND-FIN-EMIS-RANGO-NO     VALUE "N".
+
+ 01 ESS-BAND-FIN-SINTETIC              PIC  X(01) VALUE "N".
+    88 ES88-BAND-FIN-SINTETIC-SI       VALUE "S".
+    88 ES88-BAND-FIN-SINTETIC-NO       VALUE "N".
+
+ 01 ESS-BAND-FIN-SINSTRUM              PIC  X(01).
+    88 ES88-BAND-FIN-SINSTRUM-SI       VALUE "S".
+    88 ES88-BAND-FIN-SINSTRUM-NO       VALUE "N".
+
+ 01 ESS-BAND-COBRA-IMP                 PIC  X(01).
+    88 ES88-BAND-COBRA-IMP-SI          VALUE "S".
+    88 ES88-BAND-COBRA-IMP-NO          VALUE "N".
+
+ 01 ESS-FACE-AMOUNT                    PIC S9(16)V9(02).
+
+* Variables de uso general.
+ 01 ESS-FECH-SISTEMA                   PIC  X(08).
+ 01 ESS-BAND-PRIMER-REG                PIC  X(01).
+ 01 ESS-CONT-I                         PIC  9(04).
+ 01 ESS-CONT-J                         PIC  9(04).
+ 01 ESS-FECH-VEN                       PIC  9(08).
+ 01 ESS-IMPORTE-INICIAL                PIC S9(16)V9(02).
+ 01 ESS-IMPORTE-REGRESO                PIC S9(16)V9(02).
+ 01 ESS-PRECIO-INICIAL                 PIC S9(10)V9(08).
+ 01 ESS-PRECIO-REGRESO                 PIC S9(10)V9(08).
+ 01 ESS-FECH-INICIAL                   PIC  9(08).
+ 01 ESS-TASA-DESCUENTO                 PIC  9(04)V9(04).
+ 01 ESS-SUMA-TITULOS                   PIC S9(18).
+ 01 ESS-SUMA-IMPO-INI                  PIC S9(16)V9(02).
+ 01 ESS-SUMA-IMPO-REG                  PIC S9(16)V9(02).
+ 01 ESS-SUMA-NOMINAL                   PIC S9(16)V9(02).
+ 01 ESS-NETO-TITULOS                   PIC S9(18).
+*01 ESS-NETO-TITULOS                   PIC  9(18).
+ 01 ESS-NETO-IMPO-INI                  PIC S9(16)V9(02).
+ 01 ESS-NETO-IMPO-REG                  PIC S9(16)V9(02).
+*01 ESS-NETO-IMPO-INI                  PIC  9(16)V9(02).
+*01 ESS-NETO-IMPO-REG                  PIC  9(16)V9(02).
+ 01 ESS-NETO-NOMINAL                   PIC S9(16)V9(02).
+ 01 ESS-POND-PRED-INI                  PIC S9(16)V9(02).
+ 01 ESS-POND-PRED-REG                  PIC S9(16)V9(02).
+ 01 ESS-POND-TDESC-REG                 PIC S9(16)V9(02).
+ 01 ESS-POND-TPACT                     PIC S9(16)V9(02).
+ 01 ESS-POND-PRED-ACT                  PIC S9(16)V9(02).
+ 01 ESS-SUMA-POND-PRED-INI             PIC S9(16)V9(02).
+ 01 ESS-SUMA-POND-PRED-REG             PIC S9(16)V9(02).
+ 01 ESS-SUMA-POND-TDESC-REG            PIC S9(16)V9(02).
+ 01 ESS-SUMA-POND-TPACT                PIC S9(16)V9(02).
+ 01 ESS-SUMA-POND-PRED-ACT             PIC S9(16)V9(02).
+ 01 ESS-PREC-INI-POND                  PIC  9(06)V9(06).
+ 01 ESS-PREC-REG-POND                  PIC  9(06)V9(06).
+ 01 ESS-TDESC-POND                     PIC  9(06)V9(06).
+ 01 ESS-TPACT-POND                     PIC  9(06)V9(06).
+ 01 ESS-PREC-ACT-POND                  PIC  9(06)V9(06).
+ 01 ESS-NUM-CUP-POR-VENC               PIC  9(04).
+ 01 ESS-TIPO-SALDO                     PIC  X(04).
+ 01 ESS-VALOR-REF-INI                  PIC S9(08)V9(06).
+ 01 ESS-VALOR-REF-VEN                  PIC S9(08)V9(06).
+ 01 ESS-CVE-UNIDAD                     PIC  X(04).
+*01 ESS-MONTO-NOMINAL                  PIC S9(16)V9(02).
+ 01 ESS-MONTO-NOMINAL                  PIC  9(16)V9(02).
+*01 ESS-PLAZO-VTO                      PIC  9(04).      AAMA - 30A
+ 01 ESS-PLAZO-VTO                      PIC  9(06).
+ 01 ESS-PRECIO-MERCADO                 PIC  9(06)V9(06).
+ 01 ESS-VALUACION                      PIC  X(04).
+ 01 ESS-CVE-MESA-ANT                   PIC  X(04).
+ 01 ESS-TIPO-SALDO-ANT                 PIC  X(04).
+ 01 ESS-CVE-MOVIM-ANT                  PIC  X(01).
+ 01 ESS-NUM-PRODUCTO-ANT               PIC  9(09).
+*01 ESS-PLAZO-VTO-ANT                  PIC  9(04).      AAMA - 30A
+ 01 ESS-PLAZO-VTO-ANT                  PIC  9(06).
+ 01 ESS-FECH-APLI-ANT                  PIC  9(08).
+ 01 ESS-EMIS-DESC-ANT                  PIC  X(10).
+ 01 ESS-EMIS-CVE-ANT                   PIC  X(08).
+ 01 ESS-EMIS-TIPO-ANT                  PIC  X(04).
+ 01 ESS-TIPO-INSTRUM-ANT               PIC  X(04).
+ 01 ESS-VAL-NOMINAL-ANT                PIC  9(06)V9(02).
+ 01 ESS-VENC-EMI-ANT                   PIC  9(08).
+ 01 ESS-NUM-CUPON-ANT                  PIC  9(04).
+ 01 ESS-FECH-EMIS-ANT                  PIC  9(08).
+ 01 ESS-TASA-CUPON-ANT                 PIC  9(03)V9(08).
+*01 ESS-PLAZO-TOT-ANT                  PIC  9(04).          AAMA - 30A
+ 01 ESS-PLAZO-TOT-ANT                  PIC  9(06).
+*01 ESS-PLZO-DIAS-ANT                  PIC  9(04).          AAMA - 30A
+ 01 ESS-PLZO-DIAS-ANT                  PIC  9(06).
+ 01 ESS-EMIS-UNI-VAL-ANT               PIC  X(04).
+ 01 ESS-EMIS-EMISOR-ANT                PIC  9(09).
+ 01 ESS-CVE-OPER-ANT                   PIC  X(08).
+ 01 ESS-BAND-COBRA-IMP-ANT             PIC  X(01).
+*01 ESS-PLAZO-TEOR-ANT                 PIC  9(04).          AAMA - 30A
+ 01 ESS-PLAZO-TEOR-ANT                 PIC  9(06).
+ 01 ESS-PRECIO-LIMPIO                  PIC S9(16)V9(02).
+ 01 ESS-TASA-CUPON-ACTUAL              PIC  9(03)V9(08).
+ 01 ESS-CONT                           PIC S9(04)  COMP.
+ 01 ESS-INTERES-DEV                    PIC S9(10)V9(08).
+*01 ESS-DIAS-DEV                       PIC  9(04).           AAMA - 30A
+ 01 ESS-DIAS-DEV                       PIC  9(06).
+ 01 ESS-PRECIO-INI-ACT                 PIC S9(10)V9(08).
+ 01 ESS-PRECIO-VALMER                  PIC  9(10)V9(08).
+ 01 ESS-TASA-CURVA                     PIC  9(10)V9(08).
+ 01 ESS-DIAS-X-DEV                     PIC  9(06).
+ 01 ESS-SERIE-X                        PIC  X(06).
+ 01 ESS-MTM                            PIC S9(12)V9(06).
+ 01 ESS-TEMP1                          PIC S9(10)V9(08) COMP.
+ 01 ESS-TEMP2                          PIC S9(08)V9(10) COMP.
+ 01 ESS-TEMP3                          PIC S9(10)V9(08) COMP.
+ 01 ESS-PLZO-SUP                       PIC  9(06).
+ 01 ESS-PLZO-BUSQ                      PIC  9(06).
+ 01 ESS-PLZO-PROMEDIO                  PIC  9(06).
+ 01 ESS-TEMP                           PIC  9(06)V9(04).
+*01 ESS-DIAS-CALCULO-PL                PIC  9(04) COMP.      AAMA - 30A
+ 01 ESS-DIAS-CALCULO-PL                PIC  9(06) COMP.
+ 01 ESS-FECH-FIN-PL                    PIC  9(08).
+ 01 ESS-FECH-INI-PL                    PIC  9(08).
+*01 ESS-DIA-SEMANA                     PIC  9(04) COMP.      AAMA - 30A
+ 01 ESS-DIA-SEMANA                     PIC  9(06) COMP.
+ 01 ESS-PLAZO-REAL-SUBASTA-BXO         PIC  9(08) COMP.
+ 01 ESS-PLAZO-SUBASTA-BANXICO          PIC  9(08) COMP.
+ 01 ESS-DXD-AMORTIZACION               PIC  9(08) COMP.
+ 01 ESS-FECH-FIN-MES-NATURAL           PIC  9(08).
+ 01 ESS-PLAZO-REAL                     PIC  9(08) COMP.
+ 01 ESS-CUPONES-X-LIQUIDAR             PIC  9(04).
+ 01 ESS-PLAZO-CUPON                    PIC  9(08) COMP.
+ 01 ESS-TASA-ACTUAL                    PIC  9(10)V9(08) COMP.
+ 01 ESS-TASA-SUBASTA                   PIC  9(10)V9(08) COMP.
+ 01 ESS-TASA-RENDIMIENTO               PIC  9(10)V9(08) COMP.
+ 01 ESS-FECH-INICIO-CUPON              PIC  9(08).
+ 01 ESS-DD-INICIO-CUPON                PIC  9(08) COMP.
+ 01 ESS-INTERES-DEVENGADO              PIC  9(10)V9(08) COMP.
+ 01 ESS-PRECIO-SUCIO                   PIC S9(10)V9(08) COMP.
+ 01 ESS-TASA-BREM-HOY                  PIC  9(10)V9(08) COMP.
+ 01 ESS-POSI-TIT-FINAL                 PIC S9(18)       COMP.
+ 01 ESS-POSI-MON-FINAL                 PIC S9(10)V9(02) COMP.
+ 01 ESS-SLDO-TIT-INICIAL               PIC S9(18)       COMP.
+ 01 ESS-TIT-ENTRADA                    PIC  9(18)       COMP.
+ 01 ESS-TIT-SALIDA                     PIC  9(18)       COMP.
+ 01 ESS-SLDO-IMPO-INICIAL              PIC S9(16)V9(02) COMP.
+ 01 ESS-IMPO-ENTRADA                   PIC  9(16)V9(02) COMP.
+ 01 ESS-IMPO-SALIDA                    PIC  9(16)V9(02) COMP.
+ 01 ESS-NUMF-POSICION                  PIC  9(08).
+ 01 ESS-CVE-TIPO-SALDO                 PIC  X(04).
+ 01 ESS-NUM-CONTRATO                   PIC  9(09).
+
+ 01 ESS-ANIO-BIS                       PIC  9(04).
+ 01 ESS-NADA                           PIC  9(04).
+
+ 01 ESS-FECH-FIN-MES                   PIC  9(08).
+ 01 ESS-FECH-FIN-MES-R REDEFINES ESS-FECH-FIN-MES.
+    03 ESS-ANIO-FIN-MES                PIC  9(04).
+    03 ESS-MES-FIN-MES                 PIC  9(02).
+    03 ESS-DIA-FIN-MES                 PIC  9(02).
+
+ 01 ESS-FECH-MANIANA                   PIC  9(08).
+ 01 ESS-FECH-MANIANA-R REDEFINES ESS-FECH-MANIANA.
+    03 ESS-ANIO-MAN                    PIC  9(04).
+    03 ESS-MES-MAN                     PIC  9(02).
+    03 ESS-DIA-MAN                     PIC  9(02).
+
+ 01 ESS-FECH-HOY                       PIC  9(08).
+ 01 ESS-FECH-HOY-R REDEFINES ESS-FECH-HOY.
+    03 ESS-ANIO-HOY                    PIC  9(04).
+    03 ESS-MES-HOY                     PIC  9(02).
+    03 ESS-DIA-HOY                     PIC  9(02).
+
+ 01 ESS-EMIS-ASIGNADA.
+    03 ESS-NUM-PROD-ASIG               PIC  9(09).
+    03 ESS-PLZO-ASIG                   PIC  9(06).
+    03 ESS-TIPO-VALOR-ASIG             PIC  X(04).
+    03 ESS-DESC-ASIG                   PIC  X(10).
+    03 ESS-CVE-SERIE-ASIG              PIC  X(08).
+    03 ESS-FECH-EMISION-ASIG           PIC  9(08).
+    03 ESS-FECH-VENC-ASIG              PIC  9(08).
+    03 ESS-NUM-CUPON-ASIG              PIC  9(04).
+    03 ESS-UNI-VALUADORA-ASIG          PIC  X(04).
+    03 ESS-NUM-EMISOR-ASIG             PIC  9(09).
+    03 ESS-NUM-CUPONES-EMIT-ASIG       PIC  9(04).
+    03 ESS-PLAZO-CUPON-TEOR-ASIG       PIC  9(06).
+    03 ESS-BAND-COBRA-IMP-ASIG         PIC  X(01).
+
+ 01 ESS-EMIS-INFERIOR.
+    03 ESS-NUM-PROD-INF                PIC  9(09).
+    03 ESS-PLZO-INF                    PIC  9(06).
+    03 ESS-TIPO-VALOR-INF              PIC  X(04).
+    03 ESS-DESC-INF                    PIC  X(10).
+    03 ESS-CVE-SERIE-INF               PIC  X(08).
+    03 ESS-FECH-EMISION-INF            PIC  9(08).
+    03 ESS-FECH-VENC-INF               PIC  9(08).
+    03 ESS-NUM-CUPON-INF               PIC  9(04).
+    03 ESS-UNI-VALUADORA-INF           PIC  X(04).
+    03 ESS-NUM-EMISOR-INF              PIC  9(09).
+    03 ESS-NUM-CUPONES-EMIT-INF        PIC  9(04).
+    03 ESS-PLAZO-CUPON-TEOR-INF        PIC  9(06).
+    03 ESS-BAND-COBRA-IMP-INF          PIC  X(01).
+
+ 01 ESS-LIN-AVI-1.
+    03 ESS-LA1-EDO                     PIC  X(07).
+    03 FILLER                          PIC  X(20) VALUE " EJECUCION. FECHA : ".
+    03 ESS-LA1-PAR-FEC                 PIC  X(08).
+    03 FILLER                          PIC  X(08) VALUE " MESA : ".
+    03 ESS-LA1-PAR-MESA                PIC  X(04).
+
+ 01 ESS-LIN-AVI-2.
+    03 FILLER                          PIC  X(07) VALUE "HORA : ".
+    03 ESS-LA2-HH                      PIC  9(02).
+    03 FILLER                          PIC  X(01) VALUE ":".
+    03 ESS-LA2-MN                      PIC  9(02).
+    03 FILLER                          PIC  X(01) VALUE ":".
+    03 ESS-LA2-SS                      PIC  9(02).
+
+ 01 ESS-LIN-AVI-3.
+    03 FILLER                          PIC  X(50) VALUE
+       "SE LLENO LA TABLA DE COMPRAS-VENTAS. ¡¡ AVISAR !! ".
+
+
+* Constantes usadas en este programa.
+ 01 ESS-CONX-CVE-MDIN                  PIC  X(04) VALUE "MDIN".
+ 01 ESS-CONX-EDO-ACTIVA                PIC  X(04) VALUE "ACTI".
+ 01 ESS-CONX-EDO-PEND-AP               PIC  X(04) VALUE "PEAP".
+ 01 ESS-CONX-CVE-ENTRADA               PIC  X(01) VALUE "E".
+ 01 ESS-CONX-CVE-SALIDA                PIC  X(01) VALUE "S".
+ 01 ESS-CONX-VEN-CPA-REP               PIC  X(08) VALUE "VTOCPARE".
+ 01 ESS-CONX-VEN-VTA-REP               PIC  X(08) VALUE "VTOVTARE".
+ 01 ESS-CONX-TASA-DOLAR                PIC  X(04) VALUE "ORDO".
+ 01 ESS-CONX-TASA-REAL                 PIC  X(04) VALUE "ORRE".
+ 01 ESS-CONX-DOLAR                     PIC  X(04) VALUE "USD ".
+ 01 ESS-CONX-UDI                       PIC  X(04) VALUE "UDI ".
+ 01 ESS-CONX-VN-INDIZADO               PIC  X(04) VALUE "VALI".
+ 01 ESS-CONX-FOLIO-VN-IN               PIC  9(09) VALUE 1.
+ 01 ESS-CONX-NOM-PROG                  PIC  X(10) VALUE "<CBMDPORI>".
+* Variables pra insercion de carriage return y linefeed
+
+ 01 ESS-CRLF                           PIC S9(04) COMP VALUE 3338.
+ 01 FILLER REDEFINES ESS-CRLF.
+    03 ESS-CR                          PIC X(01).
+    03 ESS-LF                          PIC X(01).
+
+*(03) EGB
+*** Tabla para almacenar las ops. de cpa/vta. Si aumenta el numero de
+*** ocurrencias se debe cambiar el valor de WSS-NUM-OPS
+
+ 01 WSS-TABLA-CP-VT.
+    02 WSS-NUM-OPS                     PIC S9(04) COMP VALUE 750.
+    02 WSS-CNT-CP-VT                   PIC S9(04) COMP.
+    02 WSS-TAB-CP-VT OCCURS 0 TO 750 TIMES DEPENDING ON WSS-CNT-CP-VT.
+       05 WSS-T-NUMF-TRANSACCION       PIC 9(09) COMP.
+       05 WSS-T-FECH-APLICACION        PIC 9(08) COMP.
+       05 WSS-T-NUM-PRODUCTO           PIC 9(09) COMP.
+       05 WSS-T-CVE-OPER               PIC X(08).
+       05 WSS-T-TASA-PACTADA           PIC 9(04)V9(08) COMP.
+       05 WSS-T-IMPO-TRANSACCION       PIC 9(16)V9(02) COMP.
+       05 WSS-T-TIT-TRANSACCION        PIC 9(18)       COMP.
+       05 WSS-T-PRED-TRANSACCION       PIC 9(10)V9(08) COMP.
+*      05 WSS-T-PLZO-DIAS              PIC 9(04) COMP.         AAMA - 30A
+       05 WSS-T-PLZO-DIAS              PIC 9(06) COMP.
+       05 WSS-T-TASA-DESCUENTO         PIC 9(04)V9(08) COMP.
+       05 WSS-T-IMPO-PREMIO            PIC 9(16)V9(02) COMP.
+       05 WSS-T-IMPO-NETO              PIC 9(16)V9(02) COMP.
+       05 WSS-T-MOV-TITULO             PIC X(01).
+** Datos calculados
+       05 WSS-T-IMPORTE-INICIAL        PIC 9(16)V9(02) COMP.
+       05 WSS-T-PRECIO-INICIAL         PIC 9(10)V9(08) COMP.
+       05 WSS-T-PREC-INI-ACT           PIC 9(10)V9(08) COMP.
+       05 WSS-T-FECH-INICIAL           PIC 9(08)       COMP.
+*      05 WSS-T-PLAZO-VTO              PIC 9(04)       COMP.   AAMA - 30A
+       05 WSS-T-PLAZO-VTO              PIC 9(06)       COMP.
+       05 WSS-T-PALOMITA               PIC X(01).
+** Datos adicionales
+       05 WSS-T-TIPO-INSTRUM           PIC X(04).
+       05 WSS-T-EMIS-TIPO-VALOR        PIC X(04).
+       05 WSS-T-EMIS-DESC              PIC X(10).
+       05 WSS-T-EMIS-CVE               PIC X(08).
+       05 WSS-T-VENC-EMI               PIC 9(08)       COMP.
+       05 WSS-T-VAL-NOMINAL            PIC 9(10)V9(08) COMP.
+       05 WSS-T-FECH-EMIS              PIC 9(08)       COMP.
+       05 WSS-T-NUM-CUPON              PIC 9(04)       COMP.
+       05 WSS-T-NUM-EMISOR             PIC 9(09)       COMP.
+       05 WSS-T-UNI-VALUADORA          PIC X(04).
+       05 WSS-T-BAND-COBRA-IMP         PIC X(01).
+*      05 WSS-T-PLAZO-TEOR             PIC 9(04).     AAMA - 30A
+       05 WSS-T-PLAZO-TEOR             PIC 9(06).
+
+*- LMLN 05. Inicio
+ 01 LSS-CAR-PARN-ENTRADA.
+    02 LSS-CAR-PARN-HEADER            PIC 9(04) COMP.
+    02 LSS-CAR-VALOR-REFERENCIA       PIC X(09).
+    02 LSS-CAR-CVE-CARACTERISTICA     PIC X(04).
+    02 LSS-CAR-NUMF-CARACTERISTICA    PIC 9(09) COMP.
+
+ 01 LSS-CAR-PARN-SALIDA.
+    02 LSS-CAR-IND-VAL                NATIVE-2.
+    02 LSS-CAR-CODX-VALORES-TBL.
+       03 LSS-CAR-CODX-VALORES OCCURS 1 TO 100 TIMES
+          DEPENDING ON LSS-CAR-IND-VAL.
+          04 LSS-CAR-VAL-NUMF-CARAC   PIC 9(9) COMP.
+          04 LSS-CAR-VAL-CODX-VALOR   PIC X(20).
+
+ 01 LSS-CAR-PARX-ERROR.
+    02 LSS-CAR-PARX-MSG-ERROR-FUNC    PIC X(78).
+    02 LSS-CAR-PARX-FUNCION           PIC 9(04) COMP.
+    02 LSS-CAR-SQL-ERROR              PIC S9(04) COMP.
+
+ 01 WSS-IND                           NATIVE-2 VALUE ZERO.
+*- LMLN 05. Fin
+
+*
+**********************************************************************
+***                      PROCEDURE DIVISION                        ***
+**********************************************************************
+*-------------------------------
+ PROCEDURE DIVISION.
+*-------------------------------
+?SOURCE $DESA12.SCOGLCPA.C85DEFPG (MODULO-CONTROL-GENERAL)
+
+*-------------------------------
+ 1000000-MODULO-CONTROL-INICIO.
+    PERFORM 1100000-OBTEN-ID-PROCESO
+    PERFORM 1200000-INICIALIZA-VARIABLES
+    PERFORM 1400000-OBTEN-FECHA-SISTEMA
+    PERFORM 1500000-OBTEN-PARAMETROS.
+    MOVE "INICIA" TO ESS-LA1-EDO.
+    PERFORM 1200000-DISPLAY-INICIO-TERMINO.
+    PERFORM 9000000-ABRE-ARCHIVO-TEXTO.
+*
+?SOURCE $DESA12.SCOGLCPA.C85DEFPG (OBTEN-ID-PROCESO)
+*-------------------------------
+ 1200000-DISPLAY-INICIO-TERMINO.
+    SET ES88-FLAG-TIPO-ERR-AVISO         TO TRUE.
+    SET ES88-FLAG-ABEND-OFF              TO TRUE.
+    MOVE WSS-PARN-FECH-PROCESO           TO ESS-LA1-PAR-FEC.
+    MOVE WSS-PARX-MESA                   TO ESS-LA1-PAR-MESA.
+    MOVE ESS-LIN-AVI-1                   TO ESS-MSG-OPER-L3-TXT-ERROR.
+    ACCEPT ESS-TMPO-COMPUTADOR           FROM TIME.
+    MOVE ESS-HH-COMPUTADOR               TO ESS-LA2-HH.
+    MOVE ESS-MN-COMPUTADOR               TO ESS-LA2-MN.
+    MOVE ESS-SS-COMPUTADOR               TO ESS-LA2-SS.
+    MOVE ESS-LIN-AVI-2                   TO ESS-MSG-OPER-L4-TXT-ERROR.
+    PERFORM 8000000-MENSAJES-OPERADOR.
+
+*-------------------------------
+ 1200000-INICIALIZA-VARIABLES.
+    INITIALIZE LSSCOEDO WSS-REG-OPE.
+
+*-------------------------------
+ 1400000-OBTEN-FECHA-SISTEMA.
+    MOVE 1  TO LSS-NUM-COEDO-HEADER.
+    MOVE 2  TO LSS-PARN-COEDO-SISTEMA.
+    PERFORM 7000000-CALL-SCTRSIS.
+    IF ES88-FLAG-FIN-PROCESO-OFF
+       MOVE LSS-PARN-COEDO-FECH-CONSULTA TO ESS-FECH-SISTEMA.
+
+*-------------------------------
+ 1500000-OBTEN-PARAMETROS.
+** Obtiene parametro de fecha
+    MOVE "FECHA"    TO WSS-PARX-TEXT-PARAMETRO.
+    ENTER GETPARAMTEXT OF COBOLLIB USING  WSS-PARX-TEXT-PARAMETRO
+                                          WSS-PARX-TODO
+                                   GIVING WSS-PARN-RESULTADO.
+    IF WSS-PARN-RESULTADO NOT > ZEROES  OR  WSS-PARX-TODO = SPACES  OR
+       WSS-PARX-TODO = "********"  OR  WSS-PARX-TODO = "*"
+       MOVE ESS-FECH-SISTEMA TO  WSS-PARN-FECH-PROCESO
+    ELSE
+       MOVE WSS-PARX-TODO    TO  WSS-PARN-FECH-PROCESO-R
+    END-IF.
+    COMPUTE WSS-PARN-FECH-PROCESO = WSS-PARN-FECH-PROCESO * 1.
+** Obtiene parametro de proceso
+    MOVE "PROCESO"    TO WSS-PARX-TEXT-PARAMETRO.
+    ENTER GETPARAMTEXT OF COBOLLIB USING  WSS-PARX-TEXT-PARAMETRO
+                                          WSS-PARX-TODO
+                                   GIVING WSS-PARN-RESULTADO.
+    IF WSS-PARN-RESULTADO NOT > ZEROES  OR  WSS-PARX-TODO = SPACES  OR
+       WSS-PARX-TODO = "********"  OR  WSS-PARX-TODO = "*"
+       MOVE "RESUMEN"        TO  WSS-PARX-TIPO-PROCESO
+    ELSE
+       MOVE WSS-PARX-TODO    TO  WSS-PARX-TIPO-PROCESO
+    END-IF.
+** Obtiene parametro de mesa
+    MOVE "MESA"     TO WSS-PARX-TEXT-PARAMETRO.
+    ENTER GETPARAMTEXT OF COBOLLIB USING  WSS-PARX-TEXT-PARAMETRO
+                                          WSS-PARX-TODO
+                                   GIVING WSS-PARN-RESULTADO.
+    IF WSS-PARN-RESULTADO NOT > ZEROES  OR  WSS-PARX-TODO = SPACES  OR
+       WSS-PARX-TODO = "********"  OR  WSS-PARX-TODO = "*"
+       MOVE "MDCA"           TO  WSS-PARX-MESA
+    ELSE
+       MOVE WSS-PARX-TODO    TO  WSS-PARX-MESA
+    END-IF.
+
+
+*-------------------------------
+ 2000000-MODULO-CONTROL-PROCESO.
+    MOVE ZEROES  TO ESS-FLAG-FIN-PROCESO.
+    PERFORM 2300000-GENERA-ARCHIVO-REGR.
+
+*-------------------------------
+ 2300000-GENERA-ARCHIVO-REGR.
+    PERFORM 2321000-OBTEN-VARS-HOST.
+    MOVE "N"    TO ESS-BAND-FIN-STRAMDIN
+                   ESS-BAND-FIN-SIN-ASIGNAR
+*    PERFORM 2310000-PROCESA-CPAS-VTAS
+*    MOVE "N" TO ESS-BAND-FIN-STRAMDIN
+*    PERFORM 9000000-OPEN-STRAMDIN-RESUMEN
+*    IF CON-STATUS
+*       ENTER TAL "SQLSADISPLAY" USING SQLSA
+*    END-IF
+*    IF ES88-FLAG-FIN-PROCESO-OFF
+*       MOVE "S" TO ESS-REVISA-TAB
+        PERFORM 2323130-MUEVE-TITULOS
+*       PERFORM 2323130-INICIALIZA-REG-OPE
+*       PERFORM 2323210-INICIALIZA-RESUMEN
+*       PERFORM 9000000-FETCH-STRAMDIN-RESUMEN
+*       IF ES88-BAND-FIN-STRAMDIN-NO
+*          PERFORM 2323120-OBTEN-INFO-DE-INICIO
+*          PERFORM 2323230-DETERMINA-CUPON
+*          PERFORM 2323220-MUEVE-ACTUAL-A-ANT
+*          PERFORM 2323200-CICLO-TRAMDIN-RES
+*              UNTIL ES88-BAND-FIN-STRAMDIN-SI
+*                 OR ES88-FLAG-FIN-PROCESO-ON-ERR
+*** LLena informacion del ultimo registro
+*             PERFORM 2323400-LLENA-REG-RESUMEN
+*       END-IF
+*       PERFORM 9000000-CLOSE-STRAMDIN-RESUMEN
+*    END-IF
+*    MOVE "N" TO ESS-REVISA-TAB
+*    PERFORM 2325000-REVISA-CPAS-VTAS
+*    PERFORM 2400000-PROCESA-OPS-RANGO
+** En el caso de la Tesoreria se incluye la posicion
+    IF WSS-PARX-MESA = "MDCA"
+       PERFORM 2500000-PROCESA-POSICION
+    END-IF
+    PERFORM 9000000-CIERRA-ARCHIVO-TEXTO.
+
+**-------------------------------
+ 2310000-PROCESA-CPAS-VTAS.
+    MOVE "N"    TO ESS-BAND-FIN-STRAMDIN.
+    PERFORM 2311000-INICIALIZA-TABLA.
+    PERFORM 9000000-OPEN-STRAMDIN-CPA-VTA.
+    IF ES88-BAND-FIN-STRAMDIN-NO
+       PERFORM 9000000-FETCH-STRAMDIN-CPA-VTA
+       IF ES88-BAND-FIN-STRAMDIN-NO
+          PERFORM 2312000-CARGA-TABLA UNTIL ES88-BAND-FIN-STRAMDIN-SI
+       END-IF
+    END-IF
+    PERFORM 9000000-CLOSE-TRAMDIN-CPA-VTA.
+
+**-------------------------------
+ 2311000-INICIALIZA-TABLA.
+    MOVE WSS-NUM-OPS TO WSS-CNT-CP-VT.
+    PERFORM VARYING ESS-CONT FROM 1 BY 1 UNTIL ESS-CONT > WSS-NUM-OPS
+       MOVE ZEROES TO WSS-T-NUMF-TRANSACCION  (ESS-CONT)
+                      WSS-T-FECH-APLICACION   (ESS-CONT)
+                      WSS-T-NUM-PRODUCTO      (ESS-CONT)
+                      WSS-T-TASA-PACTADA      (ESS-CONT)
+                      WSS-T-IMPO-TRANSACCION  (ESS-CONT)
+                      WSS-T-TIT-TRANSACCION   (ESS-CONT)
+                      WSS-T-PRED-TRANSACCION  (ESS-CONT)
+                      WSS-T-PLZO-DIAS         (ESS-CONT)
+                      WSS-T-TASA-DESCUENTO    (ESS-CONT)
+                      WSS-T-IMPO-PREMIO       (ESS-CONT)
+                      WSS-T-IMPO-NETO         (ESS-CONT)
+                      WSS-T-IMPORTE-INICIAL   (ESS-CONT)
+                      WSS-T-PRECIO-INICIAL    (ESS-CONT)
+                      WSS-T-PREC-INI-ACT      (ESS-CONT)
+                      WSS-T-FECH-INICIAL      (ESS-CONT)
+                      WSS-T-PLAZO-VTO         (ESS-CONT)
+                      WSS-T-VENC-EMI          (ESS-CONT)
+                      WSS-T-VAL-NOMINAL       (ESS-CONT)
+                      WSS-T-FECH-EMIS         (ESS-CONT)
+                      WSS-T-NUM-CUPON         (ESS-CONT)
+                      WSS-T-NUM-EMISOR        (ESS-CONT)
+                      WSS-T-PLAZO-TEOR        (ESS-CONT)
+       MOVE SPACES TO WSS-T-CVE-OPER          (ESS-CONT)
+                      WSS-T-MOV-TITULO        (ESS-CONT)
+                      WSS-T-PALOMITA          (ESS-CONT)
+                      WSS-T-TIPO-INSTRUM      (ESS-CONT)
+                      WSS-T-EMIS-TIPO-VALOR   (ESS-CONT)
+                      WSS-T-EMIS-DESC         (ESS-CONT)
+                      WSS-T-EMIS-CVE          (ESS-CONT)
+                      WSS-T-UNI-VALUADORA     (ESS-CONT)
+                      WSS-T-BAND-COBRA-IMP    (ESS-CONT)
+    END-PERFORM.
+    MOVE ZEROES TO WSS-CNT-CP-VT.
+
+**-------------------------------
+ 2312000-CARGA-TABLA.
+    MOVE ZEROES TO ESS-IMPORTE-INICIAL
+                   ESS-PRECIO-INICIAL
+                   ESS-NUM-DIAS-COMP
+                   ESS-FECH-INICIAL
+                   ESS-PLAZO-VTO.
+    PERFORM 2323120-OBTEN-INFO-DE-INICIO
+    PERFORM 2323230-DETERMINA-CUPON
+    IF ES88-CALCULA-TASA-SI
+       IF TRMD-TASA-DESCUENTO = ZEROES AND ESS-PLAZO-VTO NOT = ZEROES
+           PERFORM 2323148-CALCULA-TASA-DESCUENTO
+       END-IF
+    ELSE
+       MOVE ZEROES TO TRMD-TASA-DESCUENTO
+** Cambio solicitado por L. Longoria 24/julio/2002
+**     IF PROP-CVE-INSTRUMENTO = "MBON" AND ESS-PLAZO-VTO NOT = ZEROES
+**        PERFORM 2323148-OBTEN-TCOSTO-PLIMPIO
+**     END-IF
+    END-IF
+    ADD 1 TO WSS-CNT-CP-VT
+    IF WSS-CNT-CP-VT <= WSS-NUM-OPS
+       MOVE ESS-IMPORTE-INICIAL          TO WSS-T-IMPORTE-INICIAL  (WSS-CNT-CP-VT)
+       MOVE ESS-PRECIO-INICIAL           TO WSS-T-PRECIO-INICIAL   (WSS-CNT-CP-VT)
+       MOVE ESS-PRECIO-INI-ACT           TO WSS-T-PREC-INI-ACT     (WSS-CNT-CP-VT)
+       MOVE ESS-FECH-INICIAL             TO WSS-T-FECH-INICIAL     (WSS-CNT-CP-VT)
+       MOVE ESS-PLAZO-VTO                TO WSS-T-PLAZO-VTO        (WSS-CNT-CP-VT)
+       MOVE TRAN-NUMF-TRANSACCION        TO WSS-T-NUMF-TRANSACCION (WSS-CNT-CP-VT)
+       MOVE TRAN-FECH-APLICACION         TO WSS-T-FECH-APLICACION  (WSS-CNT-CP-VT)
+       MOVE TRAN-NUM-PRODUCTO            TO WSS-T-NUM-PRODUCTO     (WSS-CNT-CP-VT)
+       MOVE TRAN-CVE-OPER                TO WSS-T-CVE-OPER         (WSS-CNT-CP-VT)
+       MOVE ORMD-TASA-PACTADA            TO WSS-T-TASA-PACTADA     (WSS-CNT-CP-VT)
+       MOVE TRAN-IMPO-TRANSACCION        TO WSS-T-IMPO-TRANSACCION (WSS-CNT-CP-VT)
+       MOVE TRMD-TIT-TRANSACCION         TO WSS-T-TIT-TRANSACCION  (WSS-CNT-CP-VT)
+       MOVE TRMD-PRED-TRANSACCION        TO WSS-T-PRED-TRANSACCION (WSS-CNT-CP-VT)
+       MOVE TRMD-PLZO-DIAS               TO WSS-T-PLZO-DIAS        (WSS-CNT-CP-VT)
+       MOVE TRMD-TASA-DESCUENTO          TO WSS-T-TASA-DESCUENTO   (WSS-CNT-CP-VT)
+       MOVE TRMD-IMPO-PREMIO             TO WSS-T-IMPO-PREMIO      (WSS-CNT-CP-VT)
+       MOVE TRMD-IMPO-NETO               TO WSS-T-IMPO-NETO        (WSS-CNT-CP-VT)
+       MOVE CVME-CODX-MOV-TITULO         TO WSS-T-MOV-TITULO       (WSS-CNT-CP-VT)
+       MOVE PROP-CVE-INSTRUMENTO         TO WSS-T-TIPO-INSTRUM     (WSS-CNT-CP-VT)
+       MOVE EMIS-CVE-TIPO-VALOR          TO WSS-T-EMIS-TIPO-VALOR  (WSS-CNT-CP-VT)
+       MOVE EMIS-DESC-VALOR              TO WSS-T-EMIS-DESC        (WSS-CNT-CP-VT)
+       MOVE EMIS-CVE-SERIE-VALOR         TO WSS-T-EMIS-CVE         (WSS-CNT-CP-VT)
+       MOVE EMIS-FECH-VENCIMIENTO-RF     TO WSS-T-VENC-EMI         (WSS-CNT-CP-VT)
+       MOVE EMIS-PREG-NOMINAL            TO WSS-T-VAL-NOMINAL      (WSS-CNT-CP-VT)
+       MOVE EMIS-FECH-EMISION            TO WSS-T-FECH-EMIS        (WSS-CNT-CP-VT)
+       MOVE EMIS-NUM-CUPON-PAGO-RV       TO WSS-T-NUM-CUPON        (WSS-CNT-CP-VT)
+       MOVE EMIS-NUM-PERSONA-EMISOR      TO WSS-T-NUM-EMISOR       (WSS-CNT-CP-VT)
+       MOVE EMIS-CVE-UNIDAD-VALUADORA    TO WSS-T-UNI-VALUADORA    (WSS-CNT-CP-VT)
+       MOVE EMIS-BAND-COBRA-IMPUESTOS-RV TO WSS-T-BAND-COBRA-IMP   (WSS-CNT-CP-VT)
+       MOVE EMIS-PLZO-PAGO-CUPON-RF      TO WSS-T-PLAZO-TEOR       (WSS-CNT-CP-VT)
+    ELSE
+       PERFORM 2312100-DISPLAY-TABLA-LLENA
+    END-IF
+    PERFORM 9000000-FETCH-STRAMDIN-CPA-VTA.
+
+**-------------------------------
+ 2312100-DISPLAY-TABLA-LLENA.
+    SET ES88-FLAG-TIPO-ERR-AVISO         TO TRUE.
+    SET ES88-FLAG-ABEND-OFF              TO TRUE.
+    MOVE ESS-LIN-AVI-3                   TO ESS-MSG-OPER-L3-TXT-ERROR.
+    ACCEPT ESS-TMPO-COMPUTADOR           FROM TIME.
+    MOVE ESS-HH-COMPUTADOR               TO ESS-LA2-HH.
+    MOVE ESS-MN-COMPUTADOR               TO ESS-LA2-MN.
+    MOVE ESS-SS-COMPUTADOR               TO ESS-LA2-SS.
+    MOVE ESS-LIN-AVI-2                   TO ESS-MSG-OPER-L4-TXT-ERROR.
+    PERFORM 8000000-MENSAJES-OPERADOR.
+
+**-------------------------------
+ 2323200-CICLO-SIN-ASIGNAR.
+    MOVE 0 TO ESS-FLAG-FIN-PROCESO
+    MOVE CTOP-CVE-INSTRUMENTO     TO WSS-TIPO-INSTRUM
+    MOVE INST-CVE-INSTRUMENTO-BMV TO WSS-TIPO-VALOR
+    MOVE "NOT"                    TO WSS-EMISORA
+    MOVE "ASSIGNED"               TO WSS-SERIE
+    MOVE ORMD-FECH-CAPTURA        TO WSS-FECHA-EMISION
+                                     ESS-FECH-1
+    MOVE ORMD-PLZO-DD-ORDEN       TO ESS-NUM-DIAS-COMP
+    PERFORM 7000000-CALL-DATEOFFSET
+    IF ES88-FLAG-FIN-PROCESO-OFF
+       MOVE ESS-FECH-2 TO WSS-FECHA-VENC-EMI
+       MOVE INST-PRED-NOMINAL-DEFAULT TO DSS-VALOR-NOMINAL-EMI
+       MOVE 0 TO WSS-PTN
+       INSPECT DSS-VALOR-NOMINAL-EMI TALLYING WSS-PTN FOR LEADING SPACES
+       IF FUNCTION LENGTH (DSS-VALOR-NOMINAL-EMI) > WSS-PTN
+          MOVE DSS-VALOR-NOMINAL-EMI (WSS-PTN + 1:)
+            TO WSS-VALOR-NOMINAL-EMI
+       END-IF
+       MOVE 0 TO ESS-FACE-AMOUNT
+       COMPUTE ESS-FACE-AMOUNT = ORMD-TIT-ASIGNADOS
+                               * INST-PRED-NOMINAL-DEFAULT
+       MOVE ESS-FACE-AMOUNT TO DSS-MONTO-NOMINAL
+       MOVE 0 TO WSS-PTN
+       INSPECT DSS-MONTO-NOMINAL TALLYING WSS-PTN FOR LEADING SPACES
+       IF FUNCTION LENGTH (DSS-MONTO-NOMINAL) > WSS-PTN
+          MOVE DSS-MONTO-NOMINAL (WSS-PTN + 1:)
+            TO WSS-MONTO-NOMINAL
+       END-IF
+
+       INITIALIZE WSS-TASA-MERCADO WSS-TASA-DESCUENTO WSS-FECHA-VENC-CUPON
+                  WSS-PLAZO-CUPON WSS-PLAZO-VTO-CUPON WSS-TASA-CUPON
+                  WSS-PRECIO-INI WSS-MONTO-INI WSS-PRECIO-REGR
+                  WSS-MONTO-REGR WSS-FECHA-REGRESO WSS-PLAZO WSS-SOBRETASA
+                  WSS-PREC-INI-ACT WSS-PLAZO-TOT WSS-PREC-VALMER WSS-MTM
+                  WSS-TASA-CURVA
+
+       MOVE ORMD-TIT-ASIGNADOS TO DSS-NUM-TITULOS
+       MOVE 0 TO WSS-PTN
+       INSPECT DSS-NUM-TITULOS TALLYING WSS-PTN FOR LEADING SPACES
+       IF FUNCTION LENGTH (DSS-NUM-TITULOS) > WSS-PTN
+          MOVE DSS-NUM-TITULOS (WSS-PTN + 1:)
+            TO WSS-NUM-TITULOS
+       END-IF
+       MOVE ORMD-TASA-PACTADA  TO DSS-TASA-PACTADA
+       MOVE 0 TO WSS-PTN
+       INSPECT DSS-TASA-PACTADA TALLYING WSS-PTN FOR LEADING SPACES
+       IF FUNCTION LENGTH (DSS-TASA-PACTADA) > WSS-PTN
+          MOVE DSS-TASA-PACTADA (WSS-PTN + 1:)
+            TO WSS-TASA-PACTADA
+       END-IF
+***    MOVE "DIRF"             TO WSS-TIPO-POSIC
+       IF CVEO-CODX-TIPO-MOVIMIENTO = "CPA" OR "CDI"
+          MOVE "BUY" TO  WSS-TIPO-POSIC
+       ELSE
+          MOVE "SELL" TO WSS-TIPO-POSIC
+       END-IF
+       MOVE ORMD-PLZO-DD-ORDEN TO WSS-PLAZO-VTO
+       MOVE "MXN"              TO WSS-DIVISA
+       PERFORM 2323110-CONCATENA-CAMPOS
+       PERFORM 9000000-ESCRIBE-ARCHIVO-TEXTO
+    END-IF.
+    PERFORM 9000000-FETCH-SIN-ASIGNAR.
+
+*-------------------------------
+ 2321000-OBTEN-VARS-HOST.
+    MOVE WSS-PARN-FECH-PROCESO TO ESS-H-FECH-APLICACION.
+    MOVE WSS-PARX-MESA         TO ESS-H-MESA.
+
+*-------------------------------
+ 2323110-CONCATENA-CAMPOS.
+    MOVE 1 TO WSS-REG-OPE-PNT
+  PERFORM 2323111-MARCA-FECHA-VALOR
+     STRING WSS-TIPO-INSTRUM     DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-EMISORA           DELIMITED BY SPACE
+           SPACE                 DELIMITED BY SIZE
+           WSS-SERIE             DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-FECHA-EMISION     DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-FECHA-VENC-EMI    DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-VALOR-NOMINAL-EMI DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-MONTO-NOMINAL     DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-TASA-MERCADO      DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-TASA-DESCUENTO    DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-FECHA-VENC-CUPON  DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-PLAZO-CUPON       DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-PLAZO-VTO-CUPON   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-TASA-CUPON        DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-SOBRETASA         DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-NUM-TITULOS       DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-PRECIO-INI        DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-MONTO-INI         DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-FECHA-REGRESO     DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-TASA-PACTADA      DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-PLAZO             DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-TIPO-POSIC        DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-PRECIO-REGR       DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-MONTO-REGR        DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-PLAZO-VTO         DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-DIVISA            DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-PREC-INI-ACT      DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-PLAZO-TOT         DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-PREC-VALMER       DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-MTM               DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-TASA-CURVA        DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-TIPO-VALOR        DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-SINT-SI-NO        DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-RANGO-SI-NO       DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-PLAZO-CUPON-CALC  DELIMITED BY SPACE
+           ESS-CR ESS-LF
+           DELIMITED BY SIZE
+      INTO RSS-REG-OPE WITH POINTER WSS-REG-OPE-PNT.
+      INITIALIZE WSS-REG-OPE.
+*     PERFORM     0000-PRUEB
+*     MOVE   "N"    TO     WSS-RANGO-SI-NO
+      MOVE  SPACES  TO     WSS-RANGO-SI-NO
+      MOVE  ZEROS   TO     WSS-TOTAL-TERM
+      MOVE  ZEROS   TO     WSS-TERM
+      MOVE  ZEROS   TO     WSS-RESTA-RESULT.
+
+*-------------------------------
+ 2323110-CONCATENA-CAMPOS-ACT.
+    MOVE 1 TO WSS-REG-OPE-PNT
+  PERFORM 2323111-MARCA-FECHA-VALOR
+     STRING WSS-TIPO-INSTRUM     DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-EMISORA           DELIMITED BY SPACE
+           SPACE                 DELIMITED BY SIZE
+           WSS-SERIE             DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-FECHA-EMISION     DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-FECHA-VENC-EMI    DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-VALOR-NOMINAL-EMI DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-MONTO-NOMINAL     DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-TASA-MERCADO      DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-TASA-DESCUENTO    DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-FECHA-VENC-CUPON  DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-PLAZO-CUPON       DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-PLAZO-VTO-CUPON   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-TASA-CUPON        DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-SOBRETASA         DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-NUM-TITULOS       DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-PRECIO-INI        DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-MONTO-INI         DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-FECHA-REGRESO     DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-TASA-PACTADA      DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-PLAZO             DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-TIPO-POSIC        DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-PRECIO-REGR       DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-MONTO-REGR        DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-PLAZO-VTO         DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-DIVISA            DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-PREC-INI-ACT      DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-PLAZO-TOT         DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-PREC-VALMER       DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-MTM               DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-TASA-CURVA        DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-TIPO-VALOR        DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-SINT-SI-NO        DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-RANGO-SI-NO       DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-PLAZO-CUPON-CALC  DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           "VTAREP"              DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           "Casa"                DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           "0"                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-NUM-CONTRATO      DELIMITED BY SPACE
+           ESS-CR ESS-LF
+           DELIMITED BY SIZE
+      INTO RSS-REG-OPE WITH POINTER WSS-REG-OPE-PNT.
+      INITIALIZE WSS-REG-OPE.
+*     PERFORM     0000-PRUEB
+*     MOVE   "N"    TO     WSS-RANGO-SI-NO
+      MOVE  SPACES  TO     WSS-RANGO-SI-NO
+      MOVE  ZEROS   TO     WSS-TOTAL-TERM
+      MOVE  ZEROS   TO     WSS-TERM
+      MOVE  ZEROS   TO     WSS-RESTA-RESULT.
+
+*-------------------------------
+*---MFG
+ 2323111-MARCA-FECHA-VALOR.
+    COMPUTE WSS-RESTA-RESULT = WSS-TOTAL-TERM - WSS-TERM
+ IF  WSS-RESTA-RESULT  <  ZEROS  AND  WSS-TOTAL-TERM > ZEROS
+     MOVE "V" TO    WSS-RANGO-SI-NO
+ ELSE
+     MOVE "N" TO    WSS-RANGO-SI-NO
+ END-IF.
+*---------------
+
+*-------------------------------
+ 2323120-OBTEN-INFO-DE-INICIO.
+    COMPUTE ESS-IMPORTE-INICIAL = TRAN-IMPO-TRANSACCION - TRMD-IMPO-PREMIO
+      ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+    END-COMPUTE.
+    COMPUTE ESS-PRECIO-INICIAL = ESS-IMPORTE-INICIAL / TRMD-TIT-TRANSACCION
+      ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+    END-COMPUTE.
+    MOVE TRAN-FECH-APLICACION TO ESS-FECH-1.
+    COMPUTE ESS-NUM-DIAS-COMP = TRMD-PLZO-DIAS * -1
+       ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+    END-COMPUTE.
+    PERFORM 7000000-CALL-DATEOFFSET.
+    IF ES88-FLAG-FIN-PROCESO-OFF
+       MOVE ESS-FECH-2 TO ESS-FECH-INICIAL
+       PERFORM 2323142-LLENA-PLAZO-VTO
+** Calculo de intereses devengados para el precio inicial
+       MOVE ESS-FECH-INICIAL      TO ESS-FECH-1
+       MOVE WSS-PARN-FECH-PROCESO TO ESS-FECH-2
+       IF ESS-FECH-INICIAL = WSS-PARN-FECH-PROCESO
+          MOVE 1 TO ESS-DIAS-DEV
+       ELSE
+          PERFORM 7000000-CALL-DAYSBTWDATES
+          IF ES88-FLAG-FIN-PROCESO-OFF
+            MOVE ESS-NUM-DIAS-COMP   TO ESS-DIAS-DEV
+          END-IF
+       END-IF
+       DIVIDE ORMD-TASA-PACTADA BY 36000 GIVING ESS-INTERES-DEV
+          ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+       END-DIVIDE
+       MULTIPLY ESS-INTERES-DEV BY ESS-DIAS-DEV GIVING ESS-INTERES-DEV
+          ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+       END-MULTIPLY
+       ADD 1 TO ESS-INTERES-DEV
+       MULTIPLY ESS-PRECIO-INICIAL BY ESS-INTERES-DEV GIVING
+          ESS-PRECIO-INI-ACT ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+       END-MULTIPLY.
+
+*-------------------------------
+ 2323130-INICIALIZA-REG-OPE.
+    INITIALIZE RSS-REG-OPE
+               DSS-VARS-EDICION.
+
+*-------------------------------
+ 2323130-MUEVE-TITULOS.
+** jelozada 21/10/2015 se agrega el header para CONTRATO
+    MOVE 1 TO WSS-REG-OPE-PNT
+    STRING "INSTRUMENT"              WSS-SEP
+           "SECURITY"                WSS-SEP
+           "ISSUE DATE"              WSS-SEP
+           "MTY DATE"                WSS-SEP
+           "FACE VALUE"              WSS-SEP
+           "FACE AMOUNT"             WSS-SEP
+           "MARKET RATE"             WSS-SEP
+           "DISC. RATE"              WSS-SEP
+           "COUPON DATE"             WSS-SEP
+           "COUPON TERM"             WSS-SEP
+           "DAYS MTY"                WSS-SEP
+           "COUPON RATE"             WSS-SEP
+           "SPREAD"                  WSS-SEP
+           "QUANTITY"                WSS-SEP
+           "INITIAL PRICE"           WSS-SEP
+           "OPEN AMOUNT"             WSS-SEP
+           "RTN DATE"                WSS-SEP
+           "REPO RATE"               WSS-SEP
+           "TERM"                    WSS-SEP
+           "REPO TYPE"               WSS-SEP
+           "RTN PRICE"               WSS-SEP
+           "RTN AMOUNT"              WSS-SEP
+           "DAYS MTY"                WSS-SEP
+           "CURRENCY"                WSS-SEP
+           "PRICE"                   WSS-SEP
+           "TOTAL TERM"              WSS-SEP
+           "VALMER PRICE"            WSS-SEP
+           "MTM"                     WSS-SEP
+           "VALMER RATE"             WSS-SEP
+           "TV"                      WSS-SEP
+           "SINT"                    WSS-SEP
+           "RANG"                    WSS-SEP
+           "REAL CPN TERM"           WSS-SEP
+           "REPO_TYPEN"              WSS-SEP
+           "INSTITUCION"             WSS-SEP
+           "MDPR_ACTUAL_CUPON_TERM"  WSS-SEP
+           "CONTRACT"
+           ESS-CR ESS-LF
+           DELIMITED BY SIZE
+      INTO RSS-REG-OPE WITH POINTER WSS-REG-OPE-PNT
+     PERFORM 9000000-ESCRIBE-ARCHIVO-TEXTO.
+
+*-------------------------------
+ 2323142-LLENA-PLAZO-VTO.
+    MOVE TRAN-FECH-APLICACION       TO ESS-FECH-1.
+    MOVE EMIS-FECH-VENCIMIENTO-RF   TO ESS-FECH-2.
+    PERFORM 7000000-CALL-DAYSBTWDATES.
+    IF ES88-FLAG-FIN-PROCESO-OFF
+       MOVE ESS-NUM-DIAS-COMP       TO ESS-PLAZO-VTO
+    ELSE
+*      MOVE 9999                    TO ESS-PLAZO-VTO           AAMA - 30A
+       MOVE 999999                  TO ESS-PLAZO-VTO
+       MOVE ZEROES                  TO ESS-FLAG-FIN-PROCESO
+    END-IF.
+
+*-------------------------------
+ 2323145-CALCULA-DIAS-CUPON.
+    IF ESS-NUM-CUPON-ANT > 1
+       COMPUTE CPON-NUM-CUPON = CPON-NUM-CUPON - 1
+       PERFORM 9000000-SEL-CUPON-TASAXNUMPYC
+       MOVE CPON-FECH-PAGO-CUPON TO ESS-FECH-1
+                                    ESS-FECH-INICIO-CUPON
+       MOVE CPON-TASA-PAGO       TO ESS-TASA-CUPON-ANT
+    ELSE
+       MOVE ESS-FECH-EMIS-ANT    TO ESS-FECH-1
+                                    ESS-FECH-INICIO-CUPON.
+    MOVE WSS-FECHA-VENC-CUPON TO ESS-FECH-2
+    PERFORM 7000000-CALL-DAYSBTWDATES.
+
+*-------------------------------
+ 2323148-CALCULA-TASA-DESCUENTO.
+    INITIALIZE                LSSTCOST
+       REPLACING NUMERIC      DATA BY ZEROS
+                 ALPHANUMERIC DATA BY SPACES.
+    MOVE TRMD-PRED-TRANSACCION TO LSS-PARN-PRECIO    OF LSSTCOST.
+    MOVE EMIS-PREG-NOMINAL     TO LSS-PARN-VAL-NOM   OF LSSTCOST.
+    MOVE ESS-PLAZO-VTO         TO LSS-PARN-DIAS-VENC OF LSSTCOST.
+    PERFORM 7000000-CALL-MDTCOST.
+    IF ES88-FLAG-FIN-PROCESO-OFF
+       MOVE LSS-PARN-RESULTADO OF LSSTCOST TO TRMD-TASA-DESCUENTO.
+
+*-------------------------------
+ 2323148-OBTEN-TCOSTO-PLIMPIO.
+    INITIALIZE                LSSPREC
+       REPLACING NUMERIC      DATA BY ZEROS
+                 ALPHANUMERIC DATA BY SPACES.
+    MOVE TRAN-NUM-PRODUCTO     TO LSS-PARN-NUM-PRODUCTO   OF LSSTCOST.
+    MOVE WSS-PARN-FECH-PROCESO TO LSS-PARN-FECH-VALUACION OF LSSTCOST.
+    MOVE ESS-PLAZO-VTO         TO LSS-PARN-DIAS-VENC      OF LSSTCOST.
+    MOVE TRMD-PRED-TRANSACCION TO LSS-PARN-PRECIO         OF LSSTCOST.
+    MOVE "U"                   TO LSS-PARX-TIPO-BUSQUEDA  OF LSSTCOST.
+    PERFORM 7000000-CALL-MDTCOST.
+    IF ES88-FLAG-FIN-PROCESO-OFF
+       MOVE LSS-PARN-RESULTADO OF LSSTCOST TO TRMD-TASA-DESCUENTO
+       COMPUTE TRMD-PRED-TRANSACCION = TRMD-PRED-TRANSACCION - LSS-PARN-INTERES-DEV OF LSSTCOST
+       MULTIPLY TRMD-PRED-TRANSACCION BY TRMD-TIT-TRANSACCION GIVING
+                TRAN-IMPO-TRANSACCION
+          ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR.
+
+*-------------------------------
+ 2323200-CICLO-TRAMDIN-RES.
+    PERFORM 2323120-OBTEN-INFO-DE-INICIO.
+    IF TRAN-NUM-PRODUCTO NOT = ESS-NUM-PRODUCTO-ANT
+        PERFORM 2323230-DETERMINA-CUPON
+    END-IF
+    IF ES88-CALCULA-TASA-SI
+       IF TRMD-TASA-DESCUENTO = ZEROES AND ESS-PLAZO-VTO NOT = ZEROES
+          PERFORM 2323148-CALCULA-TASA-DESCUENTO
+       END-IF
+    ELSE
+       MOVE ZEROES TO TRMD-TASA-DESCUENTO
+** Calcula la tasa costo y el precio limpio para los MBON. MRS. 2001/02/19
+** Se elimina el calculo del precio limpio a solicitud de L. Longoria 24/07/2002
+**     IF PROP-CVE-INSTRUMENTO = "MBON" AND ESS-PLAZO-VTO NOT = ZEROES
+**        PERFORM 2323148-OBTEN-TCOSTO-PLIMPIO
+**     END-IF
+    END-IF.
+    IF ES88-FLAG-FIN-PROCESO-OFF
+       PERFORM 2800000-DATOS-PEND-APLICAR
+       IF ES88-FLAG-FIN-PROCESO-OFF
+          PERFORM 2323240-AGRUPA-RESUMEN
+          IF ES88-FLAG-FIN-PROCESO-OFF
+             PERFORM 9000000-FETCH-STRAMDIN-RESUMEN.
+
+*-------------------------------
+ 2323210-INICIALIZA-RESUMEN.
+    MOVE ZEROES TO ESS-SUMA-TITULOS
+                   ESS-SUMA-IMPO-INI
+                   ESS-SUMA-IMPO-REG
+                   ESS-SUMA-NOMINAL
+                   ESS-NETO-TITULOS
+                   ESS-NETO-IMPO-INI
+                   ESS-NETO-IMPO-REG
+                   ESS-NETO-NOMINAL
+                   ESS-POND-PRED-INI
+                   ESS-POND-PRED-REG
+                   ESS-POND-TDESC-REG
+                   ESS-POND-TPACT
+                   ESS-POND-PRED-ACT
+                   ESS-SUMA-POND-PRED-INI
+                   ESS-SUMA-POND-PRED-REG
+                   ESS-SUMA-POND-TDESC-REG
+                   ESS-SUMA-POND-TPACT
+                   ESS-SUMA-POND-PRED-ACT.
+
+*-------------------------------
+ 2323220-MUEVE-ACTUAL-A-ANT.
+    MOVE CTOP-CVE-MESA               TO ESS-CVE-MESA-ANT.
+    MOVE TRAN-FECH-APLICACION        TO ESS-FECH-APLI-ANT.
+    MOVE CVME-CODX-MOV-TITULO        TO ESS-CVE-MOVIM-ANT.
+    MOVE TRAN-NUM-PRODUCTO           TO ESS-NUM-PRODUCTO-ANT.
+    MOVE TRMD-CVE-TIPO-SALDO         TO ESS-TIPO-SALDO-ANT.
+    MOVE ESS-PLAZO-VTO               TO ESS-PLAZO-VTO-ANT.
+    MOVE TRMD-PLZO-DIAS              TO ESS-PLZO-DIAS-ANT.
+**
+    MOVE EMIS-DESC-VALOR              TO ESS-EMIS-DESC-ANT.
+    MOVE EMIS-CVE-SERIE-VALOR         TO ESS-EMIS-CVE-ANT.
+    MOVE EMIS-CVE-TIPO-VALOR          TO ESS-EMIS-TIPO-ANT.
+    MOVE PROP-CVE-INSTRUMENTO         TO ESS-TIPO-INSTRUM-ANT.
+    MOVE EMIS-PREG-NOMINAL            TO ESS-VAL-NOMINAL-ANT.
+    MOVE EMIS-FECH-VENCIMIENTO-RF     TO ESS-VENC-EMI-ANT.
+    MOVE EMIS-NUM-CUPON-PAGO-RV       TO ESS-NUM-CUPON-ANT.
+    MOVE EMIS-FECH-EMISION            TO ESS-FECH-EMIS-ANT.
+    MOVE TRMD-PLZO-DIAS               TO ESS-PLAZO-TOT-ANT.
+    MOVE EMIS-CVE-UNIDAD-VALUADORA    TO ESS-EMIS-UNI-VAL-ANT.
+    MOVE EMIS-NUM-PERSONA-EMISOR      TO ESS-EMIS-EMISOR-ANT.
+    MOVE TRAN-CVE-OPER                TO ESS-CVE-OPER-ANT.
+    MOVE EMIS-BAND-COBRA-IMPUESTOS-RV TO ESS-BAND-COBRA-IMP-ANT.
+    MOVE EMIS-PLZO-PAGO-CUPON-RF      TO ESS-PLAZO-TEOR-ANT.
+
+*-------------------------------
+ 2323230-DETERMINA-CUPON.
+*- LMLN 05. Inicio
+*    MOVE "N"                  TO ESS-CALCULA-TASA.
+*    MOVE PROP-CVE-INSTRUMENTO TO INUN-CVE-INSTRUMENTO.
+*    MOVE "CORC"               TO INUN-CVE-CARACTERISTICA.
+*    MOVE 1                    TO INUN-NUMF-CARACTERISTICA.
+*    PERFORM 9000000-SELECT-SINSUNIV-X-CVE.
+*
+    INITIALIZE LSS-CAR-PARN-ENTRADA
+    MOVE "N"               TO ESS-CALCULA-TASA
+    MOVE 1                 TO LSS-CAR-PARN-HEADER
+    MOVE TRAN-NUM-PRODUCTO TO LSS-CAR-VALOR-REFERENCIA
+    IF TRAN-NUM-PRODUCTO = ZERO
+       MOVE PROP-CVE-INSTRUMENTO
+                           TO LSS-CAR-VALOR-REFERENCIA.
+    MOVE "CORC"            TO LSS-CAR-CVE-CARACTERISTICA
+    MOVE 1                 TO LSS-CAR-NUMF-CARACTERISTICA
+    PERFORM 9000030-LEE-CARACTERISTICA
+    IF ES88-SQLCODEX-OK AND LSS-CAR-VAL-CODX-VALOR(1) NOT = "SI"
+       MOVE "N" TO ESS-CALCULA-TASA
+    ELSE
+       MOVE "S" TO ESS-CALCULA-TASA
+    END-IF.
+*- LMLN 05. Fin
+
+*-------------------------------
+ 2323240-AGRUPA-RESUMEN.
+    IF TRAN-NUM-PRODUCTO    = ESS-NUM-PRODUCTO-ANT AND
+       TRAN-FECH-APLICACION = ESS-FECH-APLI-ANT    AND
+       TRMD-CVE-TIPO-SALDO  = ESS-TIPO-SALDO-ANT   AND
+       CVME-CODX-MOV-TITULO = ESS-CVE-MOVIM-ANT    AND
+       TRMD-PLZO-DIAS       = ESS-PLZO-DIAS-ANT
+**     ESS-PLAZO-VTO        = ESS-PLAZO-VTO-ANT
+       PERFORM 2323260-SUMA-IMPORTES
+       PERFORM 2323300-PONDERA
+       PERFORM 2323220-MUEVE-ACTUAL-A-ANT
+    ELSE
+       PERFORM 2323400-LLENA-REG-RESUMEN
+       IF ES88-FLAG-FIN-PROCESO-OFF
+          PERFORM 2323130-INICIALIZA-REG-OPE
+          PERFORM 2323210-INICIALIZA-RESUMEN
+          PERFORM 2323260-SUMA-IMPORTES
+          PERFORM 2323300-PONDERA
+          PERFORM 2323220-MUEVE-ACTUAL-A-ANT
+       END-IF
+    END-IF.
+
+*-------------------------------
+ 2323260-SUMA-IMPORTES.
+** Totaliza importes y titulos sumando entradas y restando salidas
+    IF CVME-CODX-MOV-TITULO = ESS-CONX-CVE-ENTRADA
+       ADD TRMD-TIT-TRANSACCION      TO ESS-NETO-TITULOS
+           ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+       END-ADD
+       ADD ESS-IMPORTE-INICIAL       TO ESS-NETO-IMPO-INI
+           ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+       END-ADD
+       ADD TRAN-IMPO-TRANSACCION     TO ESS-NETO-IMPO-REG
+           ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+       END-ADD
+    ELSE
+       SUBTRACT TRMD-TIT-TRANSACCION FROM ESS-NETO-TITULOS
+           ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+       END-SUBTRACT
+       SUBTRACT ESS-IMPORTE-INICIAL  FROM ESS-NETO-IMPO-INI
+           ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+       END-SUBTRACT
+       SUBTRACT TRAN-IMPO-TRANSACCION FROM ESS-NETO-IMPO-REG
+           ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+       END-SUBTRACT
+    END-IF.
+** Totaliza importes para utilizarlos en la ponderacion
+    ADD ESS-IMPORTE-INICIAL       TO ESS-SUMA-IMPO-INI
+        ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+    END-ADD
+    ADD TRAN-IMPO-TRANSACCION  TO ESS-SUMA-IMPO-REG
+        ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+    END-ADD.
+
+*-------------------------------
+ 2323300-PONDERA.
+    MULTIPLY ESS-IMPORTE-INICIAL  BY ESS-PRECIO-INICIAL    GIVING
+       ESS-POND-PRED-INI
+       ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR.
+    ADD ESS-POND-PRED-INI         TO ESS-SUMA-POND-PRED-INI
+       ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR.
+    MULTIPLY ESS-IMPORTE-INICIAL BY ESS-PRECIO-INI-ACT GIVING
+       ESS-POND-PRED-ACT
+       ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR.
+    ADD ESS-POND-PRED-ACT         TO ESS-SUMA-POND-PRED-ACT
+       ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR.
+    MULTIPLY TRAN-IMPO-TRANSACCION BY TRMD-PRED-TRANSACCION GIVING
+       ESS-POND-PRED-REG
+       ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR.
+    ADD ESS-POND-PRED-REG         TO ESS-SUMA-POND-PRED-REG
+       ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR.
+    MULTIPLY TRAN-IMPO-TRANSACCION BY TRMD-TASA-DESCUENTO   GIVING
+       ESS-POND-TDESC-REG
+       ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR.
+    ADD ESS-POND-TDESC-REG        TO ESS-SUMA-POND-TDESC-REG
+       ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR.
+    MULTIPLY TRAN-IMPO-TRANSACCION BY ORMD-TASA-PACTADA     GIVING
+       ESS-POND-TPACT
+       ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR.
+    ADD ESS-POND-TPACT            TO ESS-SUMA-POND-TPACT
+       ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR.
+
+*-------------------------------
+ 2323400-LLENA-REG-RESUMEN.
+    MOVE ESS-TIPO-INSTRUM-ANT  TO WSS-TIPO-INSTRUM.
+    MOVE ESS-EMIS-DESC-ANT     TO WSS-EMISORA.
+    MOVE ESS-EMIS-CVE-ANT      TO WSS-SERIE.
+    MOVE ESS-VENC-EMI-ANT      TO WSS-FECHA-VENC-EMI.
+    MOVE ESS-VAL-NOMINAL-ANT   TO DSS-VALOR-NOMINAL-EMI.
+    MOVE ESS-PLAZO-TOT-ANT     TO WSS-PLAZO-TOT.
+*----- MFG
+    MOVE ESS-PLAZO-TOT-ANT     TO WSS-TOTAL-TERM.
+*-----
+    MOVE 0 TO WSS-PTN
+    INSPECT DSS-VALOR-NOMINAL-EMI TALLYING WSS-PTN FOR LEADING SPACES
+    IF FUNCTION LENGTH (DSS-VALOR-NOMINAL-EMI) > WSS-PTN
+       MOVE DSS-VALOR-NOMINAL-EMI (WSS-PTN + 1:)
+         TO WSS-VALOR-NOMINAL-EMI
+    END-IF
+    MOVE ESS-FECH-APLI-ANT     TO WSS-FECHA-REGRESO.
+    MOVE ESS-PLAZO-VTO-ANT     TO WSS-PLAZO-VTO.
+    MOVE ESS-FECH-EMIS-ANT     TO WSS-FECHA-EMISION.
+    MOVE "MXN"                 TO WSS-DIVISA.
+    MOVE ESS-EMIS-TIPO-ANT     TO WSS-TIPO-VALOR.
+    MOVE WSS-PARN-FECH-PROCESO TO ESS-FECH-1.
+    MOVE ESS-FECH-APLI-ANT     TO ESS-FECH-2.
+    PERFORM 7000000-CALL-DAYSBTWDATES.
+    MOVE ESS-NUM-DIAS-COMP     TO WSS-PLAZO
+                                  ESS-DIAS-X-DEV.
+    MOVE ESS-NUM-DIAS-COMP     TO WSS-TERM
+    PERFORM 2323400-DETERMINA-TIPO-POSIC.
+    IF WSS-TIPO-POSIC = "VTAREP"  AND ES88-REVISA-TAB-SI
+       PERFORM 2324000-TOTALIZA-CPAS-VTAS
+       IF ESS-NETO-TITULOS < ZEROES
+          MOVE "SELL" TO WSS-TIPO-POSIC
+       END-IF
+    END-IF
+** Calcula ponderados de precios y tasas
+** Se intercambian los valores de precio inicial por precio inicial + intereses
+** y viceversa. Canada 25/Julio/2002
+    PERFORM 2323420-CALCULA-PONDERADOS.
+    MOVE ESS-PREC-ACT-POND    TO DSS-PRECIO-INI.
+**  MOVE ESS-PREC-INI-POND    TO DSS-PRECIO-INI.
+    MOVE 0 TO WSS-PTN
+    INSPECT DSS-PRECIO-INI TALLYING WSS-PTN FOR LEADING SPACES
+    IF FUNCTION LENGTH (DSS-PRECIO-INI) > WSS-PTN
+       MOVE DSS-PRECIO-INI (WSS-PTN + 1:)
+         TO WSS-PRECIO-INI
+    END-IF
+    MOVE ESS-PREC-INI-POND    TO DSS-PRECIO-ACT.
+**  MOVE ESS-PREC-ACT-POND    TO DSS-PRECIO-ACT.
+    MOVE 0 TO WSS-PTN
+    INSPECT DSS-PRECIO-ACT TALLYING WSS-PTN FOR LEADING SPACES
+    IF FUNCTION LENGTH (DSS-PRECIO-ACT) > WSS-PTN
+       MOVE DSS-PRECIO-ACT (WSS-PTN + 1:)
+         TO WSS-PREC-INI-ACT
+    END-IF
+    MOVE ESS-PREC-REG-POND    TO DSS-PRECIO-REGR.
+    MOVE 0 TO WSS-PTN
+    INSPECT DSS-PRECIO-REGR TALLYING WSS-PTN FOR LEADING SPACES
+    IF FUNCTION LENGTH (DSS-PRECIO-REGR) > WSS-PTN
+       MOVE DSS-PRECIO-REGR (WSS-PTN + 1:)
+         TO WSS-PRECIO-REGR
+    END-IF
+    MOVE ESS-TDESC-POND       TO DSS-TASA-DESCUENTO.
+    MOVE 0 TO WSS-PTN
+    INSPECT DSS-TASA-DESCUENTO TALLYING WSS-PTN FOR LEADING SPACES
+    IF FUNCTION LENGTH (DSS-TASA-DESCUENTO) > WSS-PTN
+       MOVE DSS-TASA-DESCUENTO (WSS-PTN + 1:)
+         TO WSS-TASA-DESCUENTO
+    END-IF
+    MOVE ESS-TPACT-POND       TO DSS-TASA-PACTADA.
+    MOVE 0 TO WSS-PTN
+    INSPECT DSS-TASA-PACTADA TALLYING WSS-PTN FOR LEADING SPACES
+    IF FUNCTION LENGTH (DSS-TASA-PACTADA) > WSS-PTN
+       MOVE DSS-TASA-PACTADA (WSS-PTN + 1:)
+         TO WSS-TASA-PACTADA
+    END-IF
+** LLena sumas de importes y titulos
+    IF ESS-NETO-TITULOS < ZEROES
+       MULTIPLY ESS-NETO-TITULOS BY -1 GIVING ESS-NETO-TITULOS
+    END-IF
+    MOVE ESS-NETO-TITULOS     TO DSS-NUM-TITULOS.
+    MOVE 0 TO WSS-PTN
+    INSPECT DSS-NUM-TITULOS TALLYING WSS-PTN FOR LEADING SPACES
+    IF FUNCTION LENGTH (DSS-NUM-TITULOS) > WSS-PTN
+       MOVE DSS-NUM-TITULOS (WSS-PTN + 1:)
+         TO WSS-NUM-TITULOS
+    END-IF
+    IF ESS-NETO-IMPO-INI < ZEROES
+       MULTIPLY ESS-NETO-IMPO-INI BY -1 GIVING ESS-NETO-IMPO-INI
+    END-IF
+    MOVE ESS-NETO-IMPO-INI    TO DSS-MONTO-INI.
+    MOVE 0 TO WSS-PTN
+    INSPECT DSS-MONTO-INI TALLYING WSS-PTN FOR LEADING SPACES
+    IF FUNCTION LENGTH (DSS-MONTO-INI) > WSS-PTN
+       MOVE DSS-MONTO-INI (WSS-PTN + 1:)
+         TO WSS-MONTO-INI
+    END-IF
+    IF ESS-NETO-IMPO-REG < ZEROES
+       MULTIPLY ESS-NETO-IMPO-REG BY -1 GIVING ESS-NETO-IMPO-REG
+    END-IF
+    MOVE ESS-NETO-IMPO-REG    TO DSS-MONTO-REGR.
+    MOVE 0 TO WSS-PTN
+    INSPECT DSS-MONTO-REGR TALLYING WSS-PTN FOR LEADING SPACES
+    IF FUNCTION LENGTH (DSS-MONTO-REGR) > WSS-PTN
+       MOVE DSS-MONTO-REGR (WSS-PTN + 1:)
+         TO WSS-MONTO-REGR
+    END-IF
+    MULTIPLY ESS-NETO-TITULOS BY ESS-VAL-NOMINAL-ANT GIVING
+       ESS-MONTO-NOMINAL
+       ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR.
+
+    MOVE ESS-MONTO-NOMINAL    TO DSS-MONTO-NOMINAL.
+    MOVE 0 TO WSS-PTN
+    INSPECT DSS-MONTO-NOMINAL TALLYING WSS-PTN FOR LEADING SPACES
+    IF FUNCTION LENGTH (DSS-MONTO-NOMINAL) > WSS-PTN
+       MOVE DSS-MONTO-NOMINAL (WSS-PTN + 1:)
+         TO WSS-MONTO-NOMINAL
+    END-IF
+** Obtiene y llena la informacion del cupon
+    PERFORM 2323440-OBTEN-DATOS-CUPON.
+** Obtiene precio de mercado, sobretasa y valuacion.
+    PERFORM 2323460-OBTEN-TASA-MERCADO.
+** Obtiene el precio de VALMER y calcula el MTM
+    PERFORM 2323480-PREC-VALMER-CALC-MTM.
+** Verifica si es un sintetico
+    PERFORM 2323580-VERIFICA-SINTETICO.
+** Indicador de operaciones de rango
+*   MOVE "N" TO WSS-RANGO-SI-NO.
+** Graba el registro en el archivo de texto
+    IF ES88-FLAG-FIN-PROCESO-OFF OR ES88-BAND-FIN-STRAMDIN-SI
+       PERFORM 2323110-CONCATENA-CAMPOS
+       PERFORM 9000000-ESCRIBE-ARCHIVO-TEXTO
+    END-IF.
+
+*-------------------------------
+ 2323400-DETERMINA-TIPO-POSIC.
+** Cpas y Vtas en directo
+    IF ESS-TIPO-SALDO-ANT = "CPVT"
+       IF ESS-NETO-TITULOS < ZEROES
+          MOVE "SELL" TO WSS-TIPO-POSIC
+       ELSE
+          MOVE "BUY"  TO WSS-TIPO-POSIC
+       END-IF
+    ELSE
+** Cpas y Vtas en reporto
+        IF ESS-TIPO-SALDO-ANT = "DIRE"
+           IF ESS-NETO-TITULOS < ZEROES
+              MOVE "CAREPO"        TO WSS-TIPO-POSIC
+           ELSE
+              MOVE "VTAREP"        TO WSS-TIPO-POSIC
+           END-IF
+        ELSE
+           IF ESS-NETO-TITULOS < ZEROES
+              MOVE "CAREPO"           TO WSS-TIPO-POSIC
+           ELSE
+              MOVE "VCREPO"           TO WSS-TIPO-POSIC
+           END-IF
+        END-IF
+    END-IF.
+
+*-------------------------------
+ 2323420-CALCULA-PONDERADOS.
+    DIVIDE ESS-SUMA-POND-PRED-INI  BY ESS-SUMA-IMPO-INI GIVING
+           ESS-PREC-INI-POND
+           ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+    END-DIVIDE
+    DIVIDE ESS-SUMA-POND-PRED-ACT  BY ESS-SUMA-IMPO-INI GIVING
+           ESS-PREC-ACT-POND
+           ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+    END-DIVIDE
+    DIVIDE ESS-SUMA-POND-PRED-REG  BY ESS-SUMA-IMPO-REG GIVING
+           ESS-PREC-REG-POND
+           ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+    END-DIVIDE
+    DIVIDE ESS-SUMA-POND-TDESC-REG BY ESS-SUMA-IMPO-REG GIVING
+           ESS-TDESC-POND
+           ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+    END-DIVIDE
+    DIVIDE ESS-SUMA-POND-TPACT BY ESS-SUMA-IMPO-REG GIVING
+           ESS-TPACT-POND
+           ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+    END-DIVIDE.
+
+*-------------------------------
+ 2323440-OBTEN-DATOS-CUPON.
+    MOVE ZEROES                  TO ESS-TASA-CUPON-ANT.
+    MOVE ESS-NUM-PRODUCTO-ANT    TO CPON-NUM-PRODUCTO.
+    MOVE ESS-NUM-CUPON-ANT       TO CPON-NUM-CUPON.
+    PERFORM 9000000-SEL-CUPON-TASAXNUMPYC.
+    IF ES88-BAND-CORTA-CUPON-SI
+       MOVE CPON-TASA-PAGO        TO ESS-TASA-CUPON-ACTUAL
+       MOVE WSS-PARN-FECH-PROCESO TO ESS-FECH-1
+       MOVE CPON-FECH-PAGO-CUPON  TO ESS-FECH-2
+                                     WSS-FECHA-VENC-CUPON
+       PERFORM 7000000-CALL-DAYSBTWDATES
+       IF NOT ES88-FLAG-FIN-PROCESO-ON-ERR
+          MOVE ESS-NUM-DIAS-COMP TO WSS-PLAZO-VTO-CUPON
+          PERFORM 2323145-CALCULA-DIAS-CUPON
+          IF NOT ES88-FLAG-FIN-PROCESO-ON-ERR
+             MOVE ESS-NUM-DIAS-COMP    TO WSS-PLAZO-CUPON-CALC
+             MOVE ESS-PLAZO-TEOR-ANT   TO WSS-PLAZO-CUPON
+             MOVE ESS-NUM-DIAS-COMP    TO ESS-PLAZO-CUPON
+          END-IF
+       END-IF
+**      IF ESS-TIPO-INSTRUM-ANT NOT = "MBON"
+           IF ESS-TASA-CUPON-ACTUAL NOT = ZEROES
+              MOVE ESS-TASA-CUPON-ACTUAL TO DSS-TASA-CUPON
+           ELSE
+              MOVE ESS-TASA-CUPON-ANT    TO DSS-TASA-CUPON
+           END-IF
+           MOVE 0 TO WSS-PTN
+           INSPECT DSS-TASA-CUPON TALLYING WSS-PTN FOR LEADING SPACES
+           IF FUNCTION LENGTH (DSS-TASA-CUPON) > WSS-PTN
+              MOVE DSS-TASA-CUPON (WSS-PTN + 1:) TO WSS-TASA-CUPON
+           END-IF
+**      END-IF
+    ELSE
+       MOVE "0" TO WSS-PLAZO-CUPON-CALC
+    END-IF.
+
+*-------------------------------
+ 2323460-OBTEN-TASA-MERCADO.
+    INITIALIZE                LSSPREC
+       REPLACING NUMERIC      DATA BY ZEROS
+                 ALPHANUMERIC DATA BY SPACES.
+    MOVE ESS-NUM-PRODUCTO-ANT   TO TASM-NUM-PRODUCTO.
+    MOVE WSS-PARN-FECH-PROCESO  TO TASM-FECH-ACTUALIZA.
+    MOVE "N"                    TO ESS-BAND-TASA-MERC.
+    PERFORM 9000000-OPEN-STASMERC-FECHA.
+    IF ES88-BAND-TASA-MERC-SI
+       PERFORM 9000000-FETCH-STASMERC-FECHA
+       IF ES88-BAND-TASA-MERC-SI
+          MOVE TASM-DIFERENCIAL      TO DSS-SOBRETASA
+          MOVE 0 TO WSS-PTN
+          INSPECT DSS-SOBRETASA TALLYING WSS-PTN FOR LEADING SPACES
+          IF FUNCTION LENGTH (DSS-SOBRETASA) > WSS-PTN
+             MOVE DSS-SOBRETASA (WSS-PTN + 1:)
+               TO WSS-SOBRETASA
+          END-IF
+          MOVE TASM-VALOR-TASA-LIDER TO DSS-TASA-MERCADO
+***       MOVE TASM-TASA-MERCADO     TO DSS-TASA-MERCADO
+          MOVE 0 TO WSS-PTN
+          INSPECT DSS-TASA-MERCADO TALLYING WSS-PTN FOR LEADING SPACES
+          IF FUNCTION LENGTH (DSS-TASA-MERCADO) > WSS-PTN
+             MOVE DSS-TASA-MERCADO (WSS-PTN + 1:)
+               TO WSS-TASA-MERCADO
+          END-IF
+**        MOVE TASM-TASA-MERCADO  TO DSS-TASA-CUPON
+**        MOVE 0 TO WSS-PTN
+**        INSPECT DSS-TASA-CUPON TALLYING WSS-PTN FOR LEADING SPACES
+**        IF FUNCTION LENGTH (DSS-TASA-CUPON) > WSS-PTN
+**           MOVE DSS-TASA-CUPON (WSS-PTN + 1:)
+**             TO WSS-TASA-CUPON
+**        END-IF
+**        IF ESS-TIPO-INSTRUM-ANT  = "BBAN"
+**           MOVE TASM-TASA-MERCADO  TO DSS-TASA-CUPON
+**           MOVE 0 TO WSS-PTN
+**           INSPECT DSS-TASA-CUPON TALLYING WSS-PTN FOR LEADING SPACES
+**           IF FUNCTION LENGTH (DSS-TASA-CUPON) > WSS-PTN
+**              MOVE DSS-TASA-CUPON (WSS-PTN + 1:)
+**                TO WSS-TASA-CUPON
+**           END-IF
+**        END-IF
+       END-IF
+       PERFORM 9000000-CLOSE-STASMERC-FECHA
+    END-IF.
+*
+**
+**                             PR
+** MTM =[(PV-PA)*CANT] - [(------------   -PA) * CANT]
+**                         (1+ TC * PLAZO
+**                                  -----
+**                                   360
+** Donde:
+** PV : Precio Valmer       PA: Precio actualizado (Precio inicial + intereses)
+** CANT : Total de titulos  PR: Precio de regreso
+** TC : Tasa de la curva    PLAZO : Plazo del reporto
+
+*-------------------------------
+ 2323480-PREC-VALMER-CALC-MTM.
+    PERFORM 2323500-OBTEN-PRECIO-VALMER.
+    PERFORM 2323540-OBTEN-TASA-CURVAS.
+    MOVE ZEROES TO ESS-MTM.
+    IF ESS-TASA-CURVA NOT = ZEROES AND ESS-DIAS-X-DEV  NOT = ZEROES
+       ENTER C "MARKMKT" OF L-CALMDP   USING ESS-PRECIO-VALMER,
+                                             ESS-PREC-REG-POND,
+                                             ESS-PREC-ACT-POND,
+                                             ESS-TASA-CURVA,
+                                             ESS-NETO-TITULOS,
+                                             ESS-DIAS-X-DEV
+                                     GIVING  ESS-MTM
+    END-IF.
+    MOVE ESS-MTM              TO DSS-MTM.
+    MOVE 0 TO WSS-PTN
+    INSPECT DSS-MTM TALLYING WSS-PTN FOR LEADING SPACES
+    IF FUNCTION LENGTH (DSS-MTM) > WSS-PTN
+       MOVE DSS-MTM (WSS-PTN + 1:)
+         TO WSS-MTM
+    END-IF.
+
+*-------------------------------
+ 2323500-OBTEN-PRECIO-VALMER.
+    MOVE ZEROES            TO ESS-PRECIO-VALMER
+    MOVE ESS-EMIS-TIPO-ANT TO VECP-TIPO-VALOR
+    IF ESS-EMIS-DESC-ANT = "SBAINLAT"
+       MOVE "BAINLAT"         TO VECP-EMISORA
+    ELSE
+       MOVE ESS-EMIS-DESC-ANT TO VECP-EMISORA
+    END-IF
+    MOVE ESS-EMIS-CVE-ANT  TO VECP-SERIE
+** Busca sgte habil
+    MOVE 1                     TO ESS-NUM-DIAS-COMP.
+    MOVE WSS-PARN-FECH-PROCESO TO ESS-FECH-1
+                                  VECP-FECH-PROCESO.
+    PERFORM 7000000-CALL-SIGHABIL.
+    IF ES88-FLAG-FIN-PROCESO-OFF
+       MOVE ESS-FECH-2         TO ESS-FECH-MANIANA
+    END-IF
+    MOVE WSS-PARN-FECH-PROCESO TO ESS-FECH-HOY.
+    IF ESS-MES-MAN = ESS-MES-HOY
+       PERFORM 9000000-SELECT-SVECTOR-1
+       IF ES88-BAND-FIN-SVECTOR-NO
+          MOVE VECP-PRECIO-SUCIO-HOY TO ESS-PRECIO-VALMER
+       END-IF
+    ELSE
+       PERFORM 2323520-ULTIMO-DIA-MES
+       IF ESS-FECH-HOY = ESS-FECH-FIN-MES
+          PERFORM 9000000-SELECT-SVECTOR-1
+          IF ES88-BAND-FIN-SVECTOR-NO
+             MOVE VECP-PRECIO-SUCIO-HOY TO ESS-PRECIO-VALMER
+          END-IF
+       ELSE
+          PERFORM 9000000-SELECT-SVECTOR-2
+          IF ES88-BAND-FIN-SVECTOR-NO
+             IF ES88-BAND-CORTA-CUPON-SI
+                ADD VECP-INTERES-HOY TO VECP-PRECIO-LIMPIO-HOY GIVING ESS-PRECIO-VALMER
+                   ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+                END-ADD
+             ELSE
+                MOVE VECP-PRECIO-LIMPIO-HOY TO ESS-PRECIO-VALMER
+             END-IF
+          END-IF
+       END-IF
+    END-IF.
+
+    MOVE ESS-PRECIO-VALMER    TO DSS-PRECIO-VALMER
+    MOVE 0 TO WSS-PTN
+    INSPECT DSS-PRECIO-VALMER TALLYING WSS-PTN FOR LEADING SPACES
+    IF FUNCTION LENGTH (DSS-PRECIO-VALMER) > WSS-PTN
+       MOVE DSS-PRECIO-VALMER (WSS-PTN + 1:)
+         TO WSS-PREC-VALMER
+    END-IF.
+
+*-------------------------------
+ 2323520-ULTIMO-DIA-MES.
+    MOVE ESS-ANIO-HOY TO ESS-ANIO-FIN-MES.
+    MOVE ESS-MES-HOY  TO ESS-MES-FIN-MES.
+    IF ESS-MES-HOY = 1 OR 3 OR 5 OR 7 OR 8 OR 10 OR 12
+       MOVE 31 TO ESS-DIA-FIN-MES
+    ELSE
+       IF ESS-MES-HOY = 4 OR 6 OR 9 OR 11
+          MOVE 30 TO ESS-DIA-FIN-MES
+       ELSE
+          DIVIDE ESS-ANIO-HOY BY 4 GIVING ESS-NADA
+                                   REMAINDER ESS-ANIO-BIS
+          END-DIVIDE
+          IF ESS-ANIO-BIS = ZEROES
+             MOVE 29 TO ESS-DIA-FIN-MES
+          ELSE
+             MOVE 28 TO ESS-DIA-FIN-MES
+          END-IF
+       END-IF
+    END-IF.
+
+*-------------------------------
+ 2323540-OBTEN-TASA-CURVAS.
+    MOVE ZEROES                 TO ESS-TASA-CURVA.
+    MOVE "*R"                   TO VECP-TIPO-VALOR.
+    MOVE ESS-BAND-COBRA-IMP-ANT TO ESS-BAND-COBRA-IMP.
+    IF ESS-TIPO-INSTRUM-ANT = "MBON"
+       IF ES88-BAND-COBRA-IMP-SI
+          MOVE "REPOBOI" TO VECP-EMISORA
+       ELSE
+          MOVE "REPOBO"  TO VECP-EMISORA
+       END-IF
+    ELSE
+       IF ESS-EMIS-TIPO-ANT = "BI"
+         MOVE "REPOCTI" TO VECP-EMISORA
+       ELSE
+         IF ESS-EMIS-TIPO-ANT = "B"
+           MOVE "REPOCT" TO VECP-EMISORA
+         ELSE
+           IF ESS-EMIS-TIPO-ANT = "L" OR "S3" OR "S5"
+              IF ESS-EMIS-UNI-VAL-ANT = "UDI"
+                 MOVE "REPOUB" TO VECP-EMISORA
+              ELSE
+                 MOVE "REPOBO" TO VECP-EMISORA
+              END-IF
+           ELSE
+*-           LMLN 07.
+             IF ESS-EMIS-TIPO-ANT = "IP" OR "IT" OR "XA" OR "LP" OR "LS" OR
+                                    "LT" OR "LD"
+               IF ESS-EMIS-UNI-VAL-ANT = "UDI"
+                  MOVE "REPOUBI" TO VECP-EMISORA
+               ELSE
+                  MOVE "REPOBOI" TO VECP-EMISORA
+               END-IF
+             ELSE
+               PERFORM 2323560-DETERMINA-X-EMISOR
+             END-IF
+           END-IF
+         END-IF
+       END-IF
+    END-IF
+    MOVE ESS-DIAS-X-DEV TO ESS-SERIE-X
+    MOVE ESS-SERIE-X    TO VECP-SERIE
+    PERFORM 9000000-SELECT-SVECTOR-1
+    IF ES88-BAND-FIN-SVECTOR-NO
+       MOVE VECP-TASA TO ESS-TASA-CURVA
+    END-IF.
+
+    MOVE ESS-TASA-CURVA  TO DSS-TASA-CURVA
+    MOVE 0 TO WSS-PTN
+    INSPECT DSS-TASA-CURVA  TALLYING WSS-PTN FOR LEADING SPACES
+    IF FUNCTION LENGTH (DSS-TASA-CURVA) > WSS-PTN
+       MOVE DSS-TASA-CURVA (WSS-PTN + 1:)
+         TO WSS-TASA-CURVA
+    END-IF.
+
+* REPOB1 : Banorte, Serfin, Banamex-Citibank, Banobras, Nafinsa, J.P. Morgan,
+*          HSBC, Scotiabank, Comerica Bank, Banco de Comercio Exterior,
+*          Bancomer-BBV, Santander, Bital, Sociedad Hipotecaria Federal
+* REPOB2 : Atlantico, Dresdner, Bank of America, Bank of Boston, ING,
+*          Banjercito, Bansefi, Invex, Inburs, Deutsche
+* REPOB3 : Todos los demas emisores
+*
+** De acuerdo al numero de emisor se determina la curva a tomar
+*-------------------------------
+ 2323560-DETERMINA-X-EMISOR.
+    IF ESS-EMIS-EMISOR-ANT = 23 OR 101 OR 43 OR 61 OR 45 OR 90 OR 59 OR 98 OR
+                             32 OR 69801 OR 25 OR 8 OR 24 OR 49 OR 57 OR
+                             124030
+       MOVE "REPOB1" TO VECP-EMISORA
+    ELSE
+      IF ESS-EMIS-EMISOR-ANT = 7 OR 29 OR 12 OR 47 OR 76 OR 31 OR 132422 OR
+                               37 OR 34 OR 65
+         MOVE "REPOB2" TO VECP-EMISORA
+      ELSE
+         MOVE "REPOB3" TO VECP-EMISORA
+      END-IF
+    END-IF.
+
+*-------------------------------
+ 2323580-VERIFICA-SINTETICO.
+    MOVE ESS-NUM-PRODUCTO-ANT TO SINT-NUM-PRODUCTO.
+    PERFORM 9000000-SELECT-SINTETIC-X-NUM.
+    IF ES88-BAND-FIN-SINTETIC-NO
+       MOVE "S" TO WSS-SINT-SI-NO
+       MOVE WSS-EMISORA TO WSS-EDITA-DESC-EMI
+       IF WSS-PRIMER-C = "S"
+          MOVE WSS-ULTIMOS-C TO WSS-EMISORA
+       END-IF
+    ELSE
+       MOVE "N" TO WSS-SINT-SI-NO
+    END-IF.
+
+*-------------------------------
+ 2324000-TOTALIZA-CPAS-VTAS.
+    PERFORM 2324100-BUSCA-CPAS-VTAS VARYING ESS-CONT-I FROM 1 BY 1 UNTIL
+                                            ESS-CONT-I > WSS-CNT-CP-VT.
+
+** Al separar posicones para el mismo dia con plazos distintos solo hay que
+** sumar y restar las cpas/vtas a una sola de las posiciones
+*-------------------------------
+ 2324100-BUSCA-CPAS-VTAS.
+    IF WSS-T-NUM-PRODUCTO    (ESS-CONT-I) = ESS-NUM-PRODUCTO-ANT AND
+       WSS-T-FECH-APLICACION (ESS-CONT-I) = ESS-FECH-APLI-ANT    AND
+       WSS-T-PALOMITA        (ESS-CONT-I) NOT = "X"
+       MOVE "X" TO WSS-T-PALOMITA (ESS-CONT-I)
+       PERFORM 2324200-SUMA-IMPORTES-CV
+**     PERFORM 2324300-PONDERA-CV
+    END-IF.
+
+*-------------------------------
+ 2324200-SUMA-IMPORTES-CV.
+    IF WSS-T-MOV-TITULO (ESS-CONT-I) = ESS-CONX-CVE-ENTRADA
+       ADD WSS-T-TIT-TRANSACCION (ESS-CONT-I)  TO ESS-NETO-TITULOS
+           ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+       END-ADD
+       ADD WSS-T-IMPORTE-INICIAL (ESS-CONT-I)  TO ESS-NETO-IMPO-INI
+           ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+       END-ADD
+       ADD WSS-T-IMPO-TRANSACCION (ESS-CONT-I) TO ESS-NETO-IMPO-REG
+           ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+       END-ADD
+    ELSE
+       SUBTRACT WSS-T-TIT-TRANSACCION (ESS-CONT-I)  FROM ESS-NETO-TITULOS
+           ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+       END-SUBTRACT
+       SUBTRACT WSS-T-IMPORTE-INICIAL (ESS-CONT-I)  FROM ESS-NETO-IMPO-INI
+           ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+       END-SUBTRACT
+       SUBTRACT WSS-T-IMPO-TRANSACCION (ESS-CONT-I) FROM ESS-NETO-IMPO-REG
+           ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+       END-SUBTRACT
+    END-IF.
+** Solo cuando se trate de totalizar cpas/vtas que no tienen su reporto
+** correspondiente se suman importes para la ponderacion
+    IF ES88-REVISA-TAB-NO
+       ADD WSS-T-IMPORTE-INICIAL (ESS-CONT-I)  TO ESS-SUMA-IMPO-INI
+           ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+       END-ADD
+       ADD WSS-T-IMPO-TRANSACCION (ESS-CONT-I) TO ESS-SUMA-IMPO-REG
+           ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+       END-ADD
+    END-IF.
+
+*-------------------------------
+ 2324300-PONDERA-CV.
+    MULTIPLY WSS-T-IMPORTE-INICIAL (ESS-CONT-I) BY WSS-T-PRECIO-INICIAL (ESS-CONT-I)
+       GIVING  ESS-POND-PRED-INI
+       ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR.
+    ADD ESS-POND-PRED-INI         TO ESS-SUMA-POND-PRED-INI
+       ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR.
+**  MULTIPLY WSS-T-IMPORTE-INICIAL (ESS-CONT-I) BY WSS-T-PREC-INI-ACT (ESS-CONT-I)
+**     GIVING  ESS-POND-PRED-ACT
+**     ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR.
+**  ADD ESS-POND-PRED-ACT         TO ESS-SUMA-POND-PRED-ACT
+**     ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR.
+    MULTIPLY WSS-T-IMPO-TRANSACCION (ESS-CONT-I) BY WSS-T-PRED-TRANSACCION (ESS-CONT-I)
+       GIVING ESS-POND-PRED-REG
+       ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR.
+    ADD ESS-POND-PRED-REG         TO ESS-SUMA-POND-PRED-REG
+       ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR.
+**  MULTIPLY WSS-T-IMPO-TRANSACCION (ESS-CONT-I) BY WSS-T-TASA-DESCUENTO (ESS-CONT-I)
+**     GIVING  ESS-POND-TDESC-REG
+**     ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR.
+**  ADD ESS-POND-TDESC-REG        TO ESS-SUMA-POND-TDESC-REG
+**     ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR.
+**  MULTIPLY WSS-T-IMPO-TRANSACCION (ESS-CONT-I) BY WSS-T-TASA-PACTADA (ESS-CONT-I)
+**     GIVING ESS-POND-TPACT
+**     ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR.
+**  ADD ESS-POND-TPACT            TO ESS-SUMA-POND-TPACT
+**     ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR.
+*
+ 2325000-REVISA-CPAS-VTAS.
+    PERFORM 2323130-INICIALIZA-REG-OPE
+    PERFORM 2323210-INICIALIZA-RESUMEN
+    IF WSS-CNT-CP-VT > ZEROES
+       PERFORM 2325100-BARRE-CPAS-VTAS VARYING ESS-CONT-I FROM 1 BY 1
+                                          UNTIL ESS-CONT-I > WSS-CNT-CP-VT
+    END-IF.
+
+*-------------------------------
+ 2325100-BARRE-CPAS-VTAS.
+    IF WSS-T-PALOMITA (ESS-CONT-I) = SPACES
+       PERFORM 2324200-SUMA-IMPORTES-CV
+       PERFORM 2324300-PONDERA-CV
+       MOVE "X" TO WSS-T-PALOMITA (ESS-CONT-I)
+       COMPUTE ESS-CONT-J = ESS-CONT-I + 1
+       IF ESS-CONT-J <= WSS-CNT-CP-VT
+          IF WSS-T-NUM-PRODUCTO (ESS-CONT-I) NOT = WSS-T-NUM-PRODUCTO (ESS-CONT-J) OR
+             WSS-T-FECH-APLICACION (ESS-CONT-I) NOT = WSS-T-FECH-APLICACION (ESS-CONT-J)
+             PERFORM 2325200-LLENA-REG-RESUMEN-CV
+             PERFORM 2323130-INICIALIZA-REG-OPE
+             PERFORM 2323210-INICIALIZA-RESUMEN
+          END-IF
+       ELSE
+          PERFORM 2325200-LLENA-REG-RESUMEN-CV
+       END-IF
+    END-IF.
+
+*-------------------------------
+ 2325200-LLENA-REG-RESUMEN-CV.
+    IF ESS-NETO-TITULOS NOT = ZEROES
+       MOVE WSS-T-TIPO-INSTRUM    (ESS-CONT-I) TO ESS-TIPO-INSTRUM-ANT
+       MOVE WSS-T-EMIS-TIPO-VALOR (ESS-CONT-I) TO ESS-EMIS-TIPO-ANT
+       MOVE WSS-T-EMIS-DESC       (ESS-CONT-I) TO ESS-EMIS-DESC-ANT
+       MOVE WSS-T-EMIS-CVE        (ESS-CONT-I) TO ESS-EMIS-CVE-ANT
+       MOVE WSS-T-VENC-EMI        (ESS-CONT-I) TO ESS-VENC-EMI-ANT
+       MOVE WSS-T-VAL-NOMINAL     (ESS-CONT-I) TO ESS-VAL-NOMINAL-ANT
+       MOVE WSS-T-FECH-APLICACION (ESS-CONT-I) TO ESS-FECH-APLI-ANT
+       MOVE WSS-T-PLAZO-VTO       (ESS-CONT-I) TO ESS-PLAZO-VTO-ANT
+       MOVE WSS-T-FECH-EMIS       (ESS-CONT-I) TO ESS-FECH-EMIS-ANT
+       MOVE "CPVT"                             TO ESS-TIPO-SALDO-ANT
+       MOVE WSS-T-NUM-PRODUCTO    (ESS-CONT-I) TO ESS-NUM-PRODUCTO-ANT
+       MOVE WSS-T-NUM-CUPON       (ESS-CONT-I) TO ESS-NUM-CUPON-ANT
+       MOVE ZEROES                             TO ESS-PLAZO-TOT-ANT
+       MOVE WSS-T-CVE-OPER        (ESS-CONT-I) TO ESS-CVE-OPER-ANT
+**     MOVE WSS-T-PLZO-DIAS       (ESS-CONT-I) TO ESS-PLAZO-TOT-ANT
+       MOVE WSS-T-NUM-EMISOR      (ESS-CONT-I) TO ESS-EMIS-EMISOR-ANT
+       MOVE WSS-T-UNI-VALUADORA   (ESS-CONT-I) TO ESS-EMIS-UNI-VAL-ANT
+       MOVE WSS-T-BAND-COBRA-IMP  (ESS-CONT-I) TO ESS-BAND-COBRA-IMP-ANT
+       MOVE WSS-T-PLAZO-TEOR      (ESS-CONT-I) TO ESS-PLAZO-TEOR-ANT
+       PERFORM 2323400-LLENA-REG-RESUMEN
+   END-IF.
+
+*-------------------------------
+ 2400000-PROCESA-OPS-RANGO.
+   MOVE 0   TO ESS-FLAG-FIN-PROCESO.
+   MOVE "N" TO ESS-BAND-FIN-OPS-RANGO.
+   PERFORM 9000000-OPEN-OPS-RANGO-INTE.
+   IF ES88-BAND-FIN-OPS-RANGO-NO
+      PERFORM 9000000-FETCH-OPS-RANGO-INTE
+      PERFORM 2400100-PROCESA-OPS-RANGO-INTE UNTIL ES88-BAND-FIN-OPS-RANGO-SI
+   END-IF
+   PERFORM 9000000-CLOSE-OPS-RANGO-INTE.
+** Operaciones de rango de terceros
+** MOVE 0   TO ESS-FLAG-FIN-PROCESO.
+** MOVE "N" TO ESS-BAND-FIN-OPS-RANGO.
+** PERFORM 9000000-OPEN-OPS-RANGO-TERC.
+** IF ES88-BAND-FIN-OPS-RANGO-NO
+**    PERFORM 9000000-FETCH-OPS-RANGO-TERC
+**    PERFORM 2400600-PROCESA-OPS-RANGO-TERC UNTIL ES88-BAND-FIN-OPS-RANGO-SI
+** END-IF
+** PERFORM 9000000-CLOSE-OPS-RANGO-TERC.
+** Operaciones de rango de mesa a mesa
+   MOVE 0   TO ESS-FLAG-FIN-PROCESO.
+   MOVE "N" TO ESS-BAND-FIN-OPS-RANGO.
+   PERFORM 9000000-OPEN-OPS-RANGO-MESA.
+   IF ES88-BAND-FIN-OPS-RANGO-NO
+      PERFORM 9000000-FETCH-OPS-RANGO-MESA
+      PERFORM 2400800-PROCESA-OPS-RANGO-MESA UNTIL ES88-BAND-FIN-OPS-RANGO-SI
+   END-IF
+   PERFORM 9000000-CLOSE-OPS-RANGO-MESA.
+
+*-------------------------------
+ 2400100-PROCESA-OPS-RANGO-INTE.
+    MOVE ZEROES TO ESS-FLAG-FIN-PROCESO.
+    PERFORM 2400200-ASIGNA-EMISORA-RANGO.
+    PERFORM 9000000-FETCH-OPS-RANGO-INTE.
+
+*-------------------------------
+ 2400200-ASIGNA-EMISORA-RANGO.
+    IF CTOP-CVE-INSTRUMENTO NOT = "IG" AND "PRLV" AND "G3" AND "G5" AND "G6"
+       MOVE CTOP-CVE-INSTRUMENTO TO INST-CVE-INSTRUMENTO
+       MOVE "N" TO ESS-BAND-FIN-SINSTRUM
+       PERFORM 9000000-SELECT-SINSTRUM
+       IF ES88-BAND-FIN-SINSTRUM-NO
+          MOVE ORMD-PLZO-DD-ORDEN       TO ESS-PLZO-BUSQ
+          MOVE "N"                      TO ESS-BAND-FIN-EMIS-RANGO
+          MOVE "N"                      TO ESS-ENCONTRE-EMI
+          MOVE ZEROES                   TO ESS-PLZO-INF  ESS-PLZO-SUP
+          MOVE INST-CVE-INSTRUMENTO     TO PROP-CVE-INSTRUMENTO
+          PERFORM 9000000-OPEN-EMIS-RANGO
+          IF ES88-BAND-FIN-EMIS-RANGO-NO
+             PERFORM 9000000-FETCH-EMIS-RANGO
+             PERFORM 2400300-BUSCA-EMISORA UNTIL ES88-BAND-FIN-EMIS-RANGO-SI
+             IF ES88-ENCONTRE-EMI-NO
+                PERFORM 2400320-MUEVE-ACTUAL-A-ASIG
+             END-IF
+             PERFORM 2400400-PROCESA-EMIS-ASIGNADA
+          END-IF
+          PERFORM 9000000-CLOSE-EMIS-RANGO
+       END-IF
+    ELSE
+       PERFORM 400500-PROCESA-NOT-ASSIGNED
+    END-IF.
+
+*-------------------------------
+ 2400300-BUSCA-EMISORA.
+    IF ESS-NULL-IND = -1
+       MOVE ESS-H-FECH-APLICACION      TO ESS-FECH-1
+       MOVE EMIS-FECH-VENCIMIENTO-RF   TO ESS-FECH-2
+*      CALL "DAYSBTWDATES" OF L-FECHAS USING ESS-FECH-1,      AAMA - 30A
+       CALL "DAYSBTWDATEINT" OF L-FECHAS USING ESS-FECH-1,
+                                               ESS-FECH-2,
+                                               ESS-NUM-DIAS-COMP
+       MOVE ESS-NUM-DIAS-COMP TO ESS-PLZO-SUP
+** El plazo a buscar es menor o igual al plazo de la primera emisora
+       IF ESS-PLZO-INF = ZEROES AND (ESS-PLZO-BUSQ <= ESS-PLZO-SUP)
+          PERFORM 2400320-MUEVE-ACTUAL-A-ASIG
+          MOVE "S" TO ESS-ENCONTRE-EMI
+          MOVE "S" TO ESS-BAND-FIN-EMIS-RANGO
+       ELSE
+** de lo contrario se localiza el rango adecuado
+          IF ESS-PLZO-INF NOT = ZEROES AND (ESS-PLZO-BUSQ >= ESS-PLZO-INF AND
+                                            ESS-PLZO-BUSQ <= ESS-PLZO-SUP)
+             COMPUTE ESS-TEMP = (ESS-PLZO-INF + ESS-PLZO-SUP) / 2
+             COMPUTE ESS-PLZO-PROMEDIO ROUNDED = 1.00 * ESS-TEMP
+             IF ESS-PLZO-BUSQ <= ESS-PLZO-PROMEDIO THEN
+                PERFORM 2400340-MUEVE-INFERIOR-A-ASIG
+             ELSE
+                PERFORM 2400320-MUEVE-ACTUAL-A-ASIG
+             END-IF
+             MOVE "S" TO ESS-ENCONTRE-EMI
+             MOVE "S" TO ESS-BAND-FIN-EMIS-RANGO
+          END-IF
+       END-IF
+       IF ES88-ENCONTRE-EMI-NO
+          PERFORM 2400360-MUEVE-ACTUAL-A-INF
+       END-IF
+    END-IF
+    IF ES88-ENCONTRE-EMI-NO
+      PERFORM 9000000-FETCH-EMIS-RANGO
+    END-IF.
+
+*-------------------------------
+ 2400320-MUEVE-ACTUAL-A-ASIG.
+    MOVE EMIS-NUM-PRODUCTO            TO ESS-NUM-PROD-ASIG
+    MOVE ESS-PLZO-SUP                 TO ESS-PLZO-ASIG
+    MOVE EMIS-CVE-TIPO-VALOR          TO ESS-TIPO-VALOR-ASIG
+    MOVE EMIS-DESC-VALOR              TO ESS-DESC-ASIG
+    MOVE EMIS-CVE-SERIE-VALOR         TO ESS-CVE-SERIE-ASIG
+    MOVE EMIS-FECH-VENCIMIENTO-RF     TO ESS-FECH-VENC-ASIG
+    MOVE EMIS-FECH-EMISION            TO ESS-FECH-EMISION-ASIG
+    MOVE EMIS-NUM-CUPON-PAGO-RV       TO ESS-NUM-CUPON-ASIG
+    MOVE EMIS-CVE-UNIDAD-VALUADORA    TO ESS-UNI-VALUADORA-ASIG
+    MOVE EMIS-NUM-PERSONA-EMISOR      TO ESS-NUM-EMISOR-ASIG
+    MOVE EMIS-NUM-CUPONES-EMITIDOS-RF TO ESS-NUM-CUPONES-EMIT-ASIG
+    MOVE EMIS-PLZO-PAGO-CUPON-RF      TO ESS-PLAZO-CUPON-TEOR-ASIG
+    MOVE EMIS-BAND-COBRA-IMPUESTOS-RV TO ESS-BAND-COBRA-IMP-ASIG.
+
+*-------------------------------
+ 2400340-MUEVE-INFERIOR-A-ASIG.
+    MOVE ESS-NUM-PROD-INF          TO ESS-NUM-PROD-ASIG
+    MOVE ESS-PLZO-INF              TO ESS-PLZO-ASIG
+    MOVE ESS-TIPO-VALOR-INF        TO ESS-TIPO-VALOR-ASIG
+    MOVE ESS-DESC-INF              TO ESS-DESC-ASIG
+    MOVE ESS-CVE-SERIE-INF         TO ESS-CVE-SERIE-ASIG
+    MOVE ESS-FECH-EMISION-INF      TO ESS-FECH-EMISION-ASIG
+    MOVE ESS-FECH-VENC-INF         TO ESS-FECH-VENC-ASIG
+    MOVE ESS-NUM-CUPON-INF         TO ESS-NUM-CUPON-ASIG
+    MOVE ESS-UNI-VALUADORA-INF     TO ESS-UNI-VALUADORA-ASIG
+    MOVE ESS-NUM-EMISOR-INF        TO ESS-NUM-EMISOR-ASIG
+    MOVE ESS-NUM-CUPONES-EMIT-INF  TO ESS-NUM-CUPONES-EMIT-ASIG
+    MOVE ESS-PLAZO-CUPON-TEOR-INF  TO ESS-PLAZO-CUPON-TEOR-ASIG
+    MOVE ESS-BAND-COBRA-IMP-INF    TO ESS-BAND-COBRA-IMP-ASIG.
+
+*-------------------------------
+ 2400360-MUEVE-ACTUAL-A-INF.
+    MOVE EMIS-NUM-PRODUCTO            TO ESS-NUM-PROD-INF
+    MOVE ESS-PLZO-SUP                 TO ESS-PLZO-INF
+    MOVE EMIS-CVE-TIPO-VALOR          TO ESS-TIPO-VALOR-INF
+    MOVE EMIS-DESC-VALOR              TO ESS-DESC-INF
+    MOVE EMIS-CVE-SERIE-VALOR         TO ESS-CVE-SERIE-INF
+    MOVE EMIS-FECH-EMISION            TO ESS-FECH-EMISION-INF
+    MOVE EMIS-FECH-VENCIMIENTO-RF     TO ESS-FECH-VENC-INF
+    MOVE EMIS-NUM-CUPON-PAGO-RV       TO ESS-NUM-CUPON-INF
+    MOVE EMIS-CVE-UNIDAD-VALUADORA    TO ESS-UNI-VALUADORA-INF
+    MOVE EMIS-NUM-PERSONA-EMISOR      TO ESS-NUM-EMISOR-INF
+    MOVE EMIS-NUM-CUPONES-EMITIDOS-RF TO ESS-NUM-CUPONES-EMIT-INF
+    MOVE EMIS-PLZO-PAGO-CUPON-RF      TO ESS-PLAZO-CUPON-TEOR-INF
+    MOVE EMIS-BAND-COBRA-IMPUESTOS-RV TO ESS-BAND-COBRA-IMP-INF.
+
+*-------------------------------
+ 2400400-PROCESA-EMIS-ASIGNADA.
+    INITIALIZE WSS-REG-OPE.
+    MOVE PROP-CVE-INSTRUMENTO      TO WSS-TIPO-INSTRUM.
+    MOVE ESS-DESC-ASIG             TO WSS-EMISORA.
+    MOVE ESS-CVE-SERIE-ASIG        TO WSS-SERIE.
+    MOVE ESS-FECH-EMISION-ASIG     TO WSS-FECHA-EMISION.
+    MOVE ESS-FECH-VENC-ASIG        TO WSS-FECHA-VENC-EMI.
+    MOVE INST-PRED-NOMINAL-DEFAULT TO DSS-VALOR-NOMINAL-EMI.
+    MOVE ZEROES TO WSS-PTN
+** Valor nominal
+    INSPECT DSS-VALOR-NOMINAL-EMI TALLYING WSS-PTN FOR LEADING SPACES
+    IF FUNCTION LENGTH (DSS-VALOR-NOMINAL-EMI) > WSS-PTN
+       MOVE DSS-VALOR-NOMINAL-EMI (WSS-PTN + 1:)
+         TO WSS-VALOR-NOMINAL-EMI
+    END-IF
+** Calculo de los titulos o imp. inicial
+    IF ORMD-TIT-ASIGNADOS = ZEROES
+       COMPUTE ORMD-TIT-ASIGNADOS = ORMD-IMPO-ORDEN / INST-PRED-NOMINAL-DEFAULT
+         ON SIZE ERROR
+           MOVE ORMD-IMPO-ORDEN TO ORMD-TIT-ASIGNADOS
+       END-COMPUTE
+    ELSE
+       COMPUTE ORMD-IMPO-ORDEN = ORMD-TIT-ASIGNADOS * INST-PRED-NOMINAL-DEFAULT
+    END-IF
+** Mueve monto nominal
+    MOVE ZEROES TO ESS-FACE-AMOUNT
+    COMPUTE ESS-FACE-AMOUNT = ORMD-TIT-ASIGNADOS * INST-PRED-NOMINAL-DEFAULT
+    MOVE ESS-FACE-AMOUNT TO DSS-MONTO-NOMINAL
+    MOVE 0 TO WSS-PTN
+    INSPECT DSS-MONTO-NOMINAL TALLYING WSS-PTN FOR LEADING SPACES
+    IF FUNCTION LENGTH (DSS-MONTO-NOMINAL) > WSS-PTN
+       MOVE DSS-MONTO-NOMINAL (WSS-PTN + 1:)
+         TO WSS-MONTO-NOMINAL
+    END-IF
+** Obtiene y mueve los datos del cupon
+    PERFORM 2323230-DETERMINA-CUPON
+**  Instrumento corta cupon
+    IF ES88-CALCULA-TASA-SI
+       MOVE ESS-NUM-PROD-ASIG         TO ESS-NUM-PRODUCTO-ANT
+       MOVE ESS-NUM-CUPON-ASIG        TO ESS-NUM-CUPON-ANT
+       MOVE ESS-FECH-EMISION-ASIG     TO ESS-FECH-EMIS-ANT
+       MOVE ESS-PLAZO-CUPON-TEOR-ASIG TO ESS-PLAZO-TEOR-ANT
+       PERFORM 2323440-OBTEN-DATOS-CUPON
+    ELSE
+       MOVE "0" TO WSS-PLAZO-CUPON-CALC
+    END-IF
+** Mueve los titulos
+    MOVE ORMD-TIT-ASIGNADOS TO DSS-NUM-TITULOS
+    MOVE 0 TO WSS-PTN
+    INSPECT DSS-NUM-TITULOS TALLYING WSS-PTN FOR LEADING SPACES
+    IF FUNCTION LENGTH (DSS-NUM-TITULOS) > WSS-PTN
+       MOVE DSS-NUM-TITULOS (WSS-PTN + 1:)
+         TO WSS-NUM-TITULOS
+    END-IF
+** Mueve la tasa
+    MOVE ORMD-TASA-PACTADA  TO DSS-TASA-PACTADA
+    MOVE 0 TO WSS-PTN
+    INSPECT DSS-TASA-PACTADA TALLYING WSS-PTN FOR LEADING SPACES
+    IF FUNCTION LENGTH (DSS-TASA-PACTADA) > WSS-PTN
+       MOVE DSS-TASA-PACTADA (WSS-PTN + 1:)
+         TO WSS-TASA-PACTADA
+    END-IF
+** Mueve el importe inicial
+    MOVE ORMD-IMPO-ORDEN      TO DSS-MONTO-INI
+    MOVE 0 TO WSS-PTN
+    INSPECT DSS-MONTO-INI TALLYING WSS-PTN FOR LEADING SPACES
+    IF FUNCTION LENGTH (DSS-MONTO-INI) > WSS-PTN
+       MOVE DSS-MONTO-INI (WSS-PTN + 1:)
+         TO WSS-MONTO-INI
+    END-IF
+** Mueve la fecha de regreso y el tipo de posicion
+    MOVE ORMD-FECH-VTO-ORDEN TO WSS-FECHA-REGRESO.
+    EVALUATE ORMD-CVE-OPER
+       WHEN "INICPARE" MOVE "BUY"  TO WSS-TIPO-POSIC
+       WHEN "CPRADIRE" MOVE "BUY"  TO WSS-TIPO-POSIC
+       WHEN "INIVTARE" MOVE "SELL" TO WSS-TIPO-POSIC
+       WHEN "VTASDIRE" MOVE "SELL" TO WSS-TIPO-POSIC
+       WHEN "INIVTARM" MOVE "SELL" TO WSS-TIPO-POSIC
+       WHEN "VTASDIRM" MOVE "SELL" TO WSS-TIPO-POSIC
+    END-EVALUATE.
+** Mueve plazo al vencimiento, divisa, plazo de la orden y tipo valor
+    MOVE ESS-PLZO-ASIG            TO WSS-PLAZO-VTO.
+    MOVE "MXN"                    TO WSS-DIVISA.
+**  MOVE ORMD-PLZO-DD-ORDEN       TO WSS-PLAZO-TOT.
+    MOVE ESS-TIPO-VALOR-ASIG      TO WSS-TIPO-VALOR
+                                     ESS-EMIS-TIPO-ANT.
+** Obtiene precio Valmer
+    MOVE ESS-DESC-ASIG            TO ESS-EMIS-DESC-ANT.
+    MOVE ESS-CVE-SERIE-ASIG       TO ESS-EMIS-CVE-ANT.
+    PERFORM 2323500-OBTEN-PRECIO-VALMER.
+** Obtiene tasa Valmer
+    MOVE WSS-TIPO-INSTRUM         TO ESS-TIPO-INSTRUM-ANT.
+    MOVE ESS-NUM-EMISOR-ASIG      TO ESS-EMIS-EMISOR-ANT.
+    MOVE ESS-UNI-VALUADORA-ASIG   TO ESS-EMIS-UNI-VAL-ANT.
+    MOVE ORMD-PLZO-DD-ORDEN       TO ESS-DIAS-X-DEV.
+    MOVE ESS-BAND-COBRA-IMP-ASIG  TO ESS-BAND-COBRA-IMP-ANT.
+    PERFORM 2400410-OBTEN-DIAS-ADICIONALES.
+    MOVE ESS-DIAS-X-DEV           TO WSS-PLAZO-TOT.
+    PERFORM 2323540-OBTEN-TASA-CURVAS.
+** Mueve precio inicial (sin intereses)
+    MOVE ESS-PRECIO-VALMER TO DSS-PRECIO-INI
+    MOVE 0 TO WSS-PTN
+    INSPECT DSS-PRECIO-INI TALLYING WSS-PTN FOR LEADING SPACES
+    IF FUNCTION LENGTH (DSS-PRECIO-INI) > WSS-PTN
+       MOVE DSS-PRECIO-INI (WSS-PTN + 1:)
+         TO WSS-PREC-INI-ACT
+    END-IF
+** Calcula precio inicial con intereses
+    MOVE ZEROES TO ESS-PRECIO-INICIAL.
+    PERFORM 2400420-CALCULA-PRECIO-LIMPIO.
+    MOVE ESS-PRECIO-SUCIO   TO DSS-PRECIO-INI
+    MOVE 0 TO WSS-PTN
+    INSPECT DSS-PRECIO-INI TALLYING WSS-PTN FOR LEADING SPACES
+    IF FUNCTION LENGTH (DSS-PRECIO-INI) > WSS-PTN
+       MOVE DSS-PRECIO-INI (WSS-PTN + 1:)
+         TO WSS-PRECIO-INI
+    END-IF
+    MOVE ESS-PRECIO-INICIAL TO DSS-PRECIO-INI
+    MOVE 0 TO WSS-PTN
+    INSPECT DSS-PRECIO-INI TALLYING WSS-PTN FOR LEADING SPACES
+    IF FUNCTION LENGTH (DSS-PRECIO-INI) > WSS-PTN
+       MOVE DSS-PRECIO-INI (WSS-PTN + 1:)
+         TO WSS-PREC-INI-ACT
+    END-IF
+*
+** Indicadores de sintetico y ops. de rango
+    MOVE "N" TO WSS-SINT-SI-NO
+*   MOVE "S" TO WSS-RANGO-SI-NO
+*
+    PERFORM 2323110-CONCATENA-CAMPOS.
+    PERFORM 9000000-ESCRIBE-ARCHIVO-TEXTO.
+
+*-------------------------------
+ 2400410-OBTEN-DIAS-ADICIONALES.
+    MOVE ORMD-FECH-CAPTURA     TO ESS-FECH-1.
+    MOVE ORMD-FECH-LIQUIDACION TO ESS-FECH-2.
+    PERFORM 7000000-CALL-DAYSBTWDATES.
+    ADD ESS-NUM-DIAS-COMP TO ESS-DIAS-X-DEV.
+
+*-------------------------------
+ 2400420-CALCULA-PRECIO-LIMPIO.
+** Papeles que cortan cupon
+    MOVE ZEROES TO ESS-CUPONES-X-LIQUIDAR
+                   ESS-PRECIO-SUCIO.
+** Se mueve el plazo teorico del cupon para los calculos
+    MOVE ESS-PLAZO-CUPON-TEOR-ASIG TO ESS-PLAZO-CUPON
+    IF ES88-CALCULA-TASA-NO
+       MOVE 4               TO ESS-DIA-SEMANA
+       MOVE ESS-PLAZO-CUPON TO ESS-PLAZO-REAL-SUBASTA-BXO
+       PERFORM 2400430-OBTEN-FIN-MES-NATURAL
+       MOVE ESS-FECH-FIN-MES-NATURAL TO ESS-FECH-1
+       MOVE WSS-FECHA-VENC-EMI       TO ESS-FECH-2
+       PERFORM 7000000-CALL-DAYSBTWDATES
+       MOVE ESS-NUM-DIAS-COMP        TO ESS-DXD-AMORTIZACION
+** Para el caso de los UMS (años de 360 dias en lugar de 365)
+**     IF PROP-CVE-INSTRUMENTO = "UMS"
+**        MOVE
+**     END-IF
+       COMPUTE ESS-CUPONES-X-LIQUIDAR = ESS-NUM-CUPONES-EMIT-ASIG - ESS-NUM-CUPON-ASIG + 1
+       COMPUTE ESS-PLAZO-REAL = ((ESS-CUPONES-X-LIQUIDAR * ESS-PLAZO-CUPON) - ESS-DXD-AMORTIZACION) + (ESS-DIA-SEMANA - 4)
+       IF PROP-CVE-INSTRUMENTO = "MBON" OR "PIC" OR "UMS" OR "UDIB"
+          MOVE ESS-TASA-CUPON-ACTUAL TO ESS-TASA-ACTUAL
+       ELSE
+*-        LMLN 07.
+          IF PROP-CVE-INSTRUMENTO = "BREM" OR PROP-CVE-INSTRUMENTO = "LBON"
+             PERFORM 2400450-OBTEN-TASA-BREM
+             MOVE ESS-TASA-BREM-HOY TO ESS-TASA-ACTUAL
+          ELSE
+             PERFORM 2400440-CALCULA-TASA-ACTUAL
+          END-IF
+       END-IF
+       MOVE ORMD-TASA-PACTADA        TO ESS-TASA-RENDIMIENTO
+       MOVE ESS-FECH-INICIO-CUPON    TO ESS-FECH-1
+       MOVE ESS-FECH-FIN-MES-NATURAL TO ESS-FECH-2
+       PERFORM 7000000-CALL-DAYSBTWDATES
+       MOVE ESS-NUM-DIAS-COMP        TO ESS-DD-INICIO-CUPON
+       IF ESS-TASA-RENDIMIENTO NOT = ZEROES
+         ENTER C "PRECIO_CCUPON" OF L-CALMDP USING  ESS-NUM-CUPONES-EMIT-ASIG,
+                                                    ESS-NUM-CUPON-ASIG,
+                                                    ESS-PLAZO-CUPON-TEOR-ASIG,
+                                                    ESS-PLAZO-REAL,
+                                                    ESS-TASA-RENDIMIENTO,
+                                                    ESS-TASA-ACTUAL,
+                                                    ESS-TASA-CUPON-ACTUAL,
+                                                    PROP-CVE-INSTRUMENTO
+                                             GIVING ESS-PRECIO-INICIAL
+       ELSE
+          MOVE ORMD-PRED-ASIGNACION TO ESS-PRECIO-INICIAL
+       END-IF
+       COMPUTE ESS-INTERES-DEV = ESS-TASA-CUPON-ACTUAL * 100.0 / 36000.0 * ESS-DD-INICIO-CUPON
+       ADD ESS-INTERES-DEV TO ESS-PRECIO-INICIAL GIVING ESS-PRECIO-SUCIO
+       IF PROP-CVE-INSTRUMENTO = "UDIB" OR "PIC"
+          MOVE WSS-PARN-FECH-PROCESO TO HUNI-FECH-PUBLICACION-UNIDAD
+          MOVE ESS-CONX-UDI          TO HUNI-CVE-INDICADOR-MERCADO
+          PERFORM 9000000-SEL-HISTUNI-PRECXFECCV
+          IF ES88-FLAG-FIN-PROCESO-OFF
+             MULTIPLY ESS-PRECIO-INICIAL BY HUNI-PREG-INDICADOR GIVING ESS-PRECIO-INICIAL
+                ON SIZE ERROR
+                   PERFORM 2910000-ON-SIZE-ERROR
+             END-MULTIPLY
+             MULTIPLY ESS-PRECIO-SUCIO   BY HUNI-PREG-INDICADOR GIVING ESS-PRECIO-SUCIO
+                ON SIZE ERROR
+                   PERFORM 2910000-ON-SIZE-ERROR
+             END-MULTIPLY
+          END-IF
+       END-IF
+    ELSE
+       MOVE ORMD-TASA-PACTADA     TO ESS-TASA-RENDIMIENTO
+       MOVE WSS-PARN-FECH-PROCESO TO ESS-FECH-1
+       MOVE WSS-FECHA-VENC-EMI    TO ESS-FECH-2
+       PERFORM 7000000-CALL-DAYSBTWDATES
+       MOVE ESS-NUM-DIAS-COMP     TO ESS-PLAZO-REAL-SUBASTA-BXO
+       ENTER C "PRECIO_SCUPON" OF L-CALMDP USING ESS-TASA-RENDIMIENTO,
+                                                ESS-PLAZO-REAL-SUBASTA-BXO,
+                                                INST-PRED-NOMINAL-DEFAULT
+                                       GIVING ESS-PRECIO-INICIAL
+       MOVE ESS-PRECIO-INICIAL TO ESS-PRECIO-SUCIO
+    END-IF.
+
+*-------------------------------
+ 2400430-OBTEN-FIN-MES-NATURAL.
+    IF ESS-MES-MAN = ESS-MES-HOY
+       MOVE WSS-PARN-FECH-PROCESO TO ESS-FECH-FIN-MES-NATURAL
+    ELSE
+       MOVE ESS-FECH-FIN-MES      TO ESS-FECH-FIN-MES-NATURAL
+    END-IF.
+
+*-------------------------------
+ 2400440-CALCULA-TASA-ACTUAL.
+    EVALUATE ESS-PLAZO-CUPON
+       WHEN  28 MOVE "CT28" TO HTAI-CVE-INDICADOR-MERCADO
+                MOVE 28     TO ESS-PLAZO-SUBASTA-BANXICO
+       WHEN  91 MOVE "CT91" TO HTAI-CVE-INDICADOR-MERCADO
+                MOVE 91     TO ESS-PLAZO-SUBASTA-BANXICO
+       WHEN 182 MOVE "B182" TO HTAI-CVE-INDICADOR-MERCADO
+                MOVE 182    TO ESS-PLAZO-SUBASTA-BANXICO
+       WHEN 364 MOVE "B364" TO HTAI-CVE-INDICADOR-MERCADO
+                MOVE 364    TO ESS-PLAZO-SUBASTA-BANXICO
+    END-EVALUATE.
+    PERFORM 2400460-OBTEN-TASA-HIST
+    MOVE ZEROES TO ESS-TASA-SUBASTA
+    IF ES88-BAND-TASA-VIG-NO
+       MOVE HTAI-TASA-VIGENTE TO ESS-TASA-SUBASTA
+       ENTER C "TASA_ACTUAL" OF L-CALMDP USING  ESS-TASA-SUBASTA,
+                                               ESS-PLAZO-REAL-SUBASTA-BXO,
+                                               ESS-PLAZO-SUBASTA-BANXICO
+                                        GIVING ESS-TASA-ACTUAL
+    END-IF.
+
+*-------------------------------
+ 2400450-OBTEN-TASA-BREM.
+    MOVE ZEROES TO ESS-TASA-BREM-HOY.
+    MOVE WSS-PARN-FECH-PROCESO TO TBRE-FECHA.
+    MOVE ESS-NUM-PROD-ASIG     TO TBRE-NUM-PRODUCTO.
+    PERFORM 9000000-SELECT-STASBREM.
+    IF ES88-BAND-FIN-TASBREM-NO
+       MOVE TBRE-TASA TO ESS-TASA-BREM-HOY
+    END-IF.
+
+*-------------------------------
+ 2400460-OBTEN-TASA-HIST.
+    MOVE "N" TO ESS-BAND-TASA-VIG.
+    PERFORM 9000000-OPEN-CUR-SHISTASI.
+    IF ES88-BAND-TASA-VIG-NO
+       PERFORM 9000000-FETCH-CUR-SHISTASI
+    END-IF.
+
+*-------------------------------
+ 400500-PROCESA-NOT-ASSIGNED.
+    INITIALIZE WSS-REG-OPE.
+**  MOVE CTOP-CVE-INSTRUMENTO     TO WSS-TIPO-INSTRUM
+    EVALUATE CTOP-CVE-INSTRUMENTO
+      WHEN "IG" MOVE "PRLV" TO INST-CVE-INSTRUMENTO
+      WHEN "G3" MOVE "CTIM" TO INST-CVE-INSTRUMENTO
+      WHEN "G5" MOVE "CTIM" TO INST-CVE-INSTRUMENTO
+      WHEN "G6" MOVE "CTIM" TO INST-CVE-INSTRUMENTO
+      WHEN OTHER MOVE CTOP-CVE-INSTRUMENTO TO INST-CVE-INSTRUMENTO
+    END-EVALUATE
+    MOVE INST-CVE-INSTRUMENTO TO WSS-TIPO-INSTRUM
+                                 ESS-TIPO-INSTRUM-ANT.
+    MOVE "N" TO ESS-BAND-FIN-SINSTRUM
+    PERFORM 9000000-SELECT-SINSTRUM
+    IF ES88-BAND-FIN-SINSTRUM-NO
+       MOVE INST-CVE-INSTRUMENTO-BMV TO WSS-TIPO-VALOR
+       MOVE "NOT"                    TO WSS-EMISORA
+       MOVE "ASSIGNED"               TO WSS-SERIE
+       MOVE ORMD-FECH-CAPTURA        TO WSS-FECHA-EMISION
+                                        ESS-FECH-1
+       MOVE ORMD-PLZO-DD-ORDEN       TO ESS-NUM-DIAS-COMP
+**     PERFORM 7000000-CALL-DATEOFFSET
+**     MOVE ESS-FECH-2 TO WSS-FECHA-VENC-EMI
+       MOVE INST-PRED-NOMINAL-DEFAULT TO DSS-VALOR-NOMINAL-EMI
+       MOVE 0 TO WSS-PTN
+       INSPECT DSS-VALOR-NOMINAL-EMI TALLYING WSS-PTN FOR LEADING SPACES
+       IF FUNCTION LENGTH (DSS-VALOR-NOMINAL-EMI) > WSS-PTN
+          MOVE DSS-VALOR-NOMINAL-EMI (WSS-PTN + 1:)
+             TO WSS-VALOR-NOMINAL-EMI
+       END-IF
+       IF ORMD-TIT-ASIGNADOS = ZEROES
+          COMPUTE ORMD-TIT-ASIGNADOS = ORMD-IMPO-ORDEN / INST-PRED-NOMINAL-DEFAULT
+            ON SIZE ERROR
+              MOVE ORMD-IMPO-ORDEN TO ORMD-TIT-ASIGNADOS
+          END-COMPUTE
+       ELSE
+          COMPUTE ORMD-IMPO-ORDEN = ORMD-TIT-ASIGNADOS * INST-PRED-NOMINAL-DEFAULT
+       END-IF
+       MOVE 0 TO ESS-FACE-AMOUNT
+       COMPUTE ESS-FACE-AMOUNT = ORMD-TIT-ASIGNADOS
+                                * INST-PRED-NOMINAL-DEFAULT
+       MOVE ESS-FACE-AMOUNT TO DSS-MONTO-NOMINAL
+       MOVE 0 TO WSS-PTN
+       INSPECT DSS-MONTO-NOMINAL TALLYING WSS-PTN FOR LEADING SPACES
+       IF FUNCTION LENGTH (DSS-MONTO-NOMINAL) > WSS-PTN
+          MOVE DSS-MONTO-NOMINAL (WSS-PTN + 1:)
+             TO WSS-MONTO-NOMINAL
+       END-IF
+       MOVE ORMD-TIT-ASIGNADOS TO DSS-NUM-TITULOS
+       MOVE 0 TO WSS-PTN
+       INSPECT DSS-NUM-TITULOS TALLYING WSS-PTN FOR LEADING SPACES
+       IF FUNCTION LENGTH (DSS-NUM-TITULOS) > WSS-PTN
+           MOVE DSS-NUM-TITULOS (WSS-PTN + 1:)
+             TO WSS-NUM-TITULOS
+       END-IF
+       MOVE ORMD-IMPO-ORDEN      TO DSS-MONTO-INI
+       MOVE 0 TO WSS-PTN
+       INSPECT DSS-MONTO-INI TALLYING WSS-PTN FOR LEADING SPACES
+       IF FUNCTION LENGTH (DSS-MONTO-INI) > WSS-PTN
+          MOVE DSS-MONTO-INI (WSS-PTN + 1:)
+            TO WSS-MONTO-INI
+       END-IF
+       MOVE ORMD-TASA-PACTADA  TO DSS-TASA-PACTADA
+       MOVE 0 TO WSS-PTN
+       INSPECT DSS-TASA-PACTADA TALLYING WSS-PTN FOR LEADING SPACES
+       IF FUNCTION LENGTH (DSS-TASA-PACTADA) > WSS-PTN
+          MOVE DSS-TASA-PACTADA (WSS-PTN + 1:)
+            TO WSS-TASA-PACTADA
+       END-IF
+       EVALUATE ORMD-CVE-OPER
+          WHEN "INICPARE" MOVE "BUY"  TO WSS-TIPO-POSIC
+          WHEN "CPRADIRE" MOVE "BUY"  TO WSS-TIPO-POSIC
+          WHEN "INIVTARE" MOVE "SELL" TO WSS-TIPO-POSIC
+          WHEN "VTASDIRE" MOVE "SELL" TO WSS-TIPO-POSIC
+          WHEN "INIVTARM" MOVE "SELL" TO WSS-TIPO-POSIC
+          WHEN "VTASDIRM" MOVE "SELL" TO WSS-TIPO-POSIC
+       END-EVALUATE
+       MOVE ORMD-FECH-VTO-ORDEN   TO WSS-FECHA-REGRESO
+                                     WSS-FECHA-VENC-EMI
+       MOVE WSS-PARN-FECH-PROCESO TO ESS-FECH-1
+       MOVE ORMD-FECH-VTO-ORDEN   TO ESS-FECH-2
+       PERFORM 7000000-CALL-DAYSBTWDATES.
+       MOVE ESS-NUM-DIAS-COMP     TO WSS-PLAZO-VTO
+                                     ESS-PLAZO-VTO.
+**     MOVE ORMD-PLZO-DD-ORDEN  TO WSS-PLAZO-VTO
+**                                 WSS-PLAZO-TOT
+       MOVE "MXN"               TO WSS-DIVISA
+       MOVE "N"                 TO WSS-SINT-SI-NO
+*      MOVE "S"                 TO WSS-RANGO-SI-NO
+       IF (CTOP-CVE-INSTRUMENTO = "G3" OR "G5" OR "G6") OR
+          (INST-CVE-INSTRUMENTO = "PRLV")
+          MOVE ORMD-PLZO-DD-ORDEN    TO ESS-DIAS-X-DEV
+          MOVE SPACES                TO ESS-BAND-COBRA-IMP-ANT
+** Para los PRLVs se pone como emisor 2 para que tome la curva REPOB1
+          IF INST-CVE-INSTRUMENTO = "PRLV"
+             MOVE "I"  TO ESS-EMIS-TIPO-ANT
+             MOVE 2    TO ESS-EMIS-EMISOR-ANT
+          ELSE
+             MOVE "BI" TO ESS-EMIS-TIPO-ANT
+          END-IF
+          MOVE WSS-PARN-FECH-PROCESO TO VECP-FECH-PROCESO
+          PERFORM 2400410-OBTEN-DIAS-ADICIONALES
+          MOVE ESS-DIAS-X-DEV        TO WSS-PLAZO-TOT
+          PERFORM 2323540-OBTEN-TASA-CURVAS
+       END-IF
+       IF (CTOP-CVE-INSTRUMENTO = "G3" OR "G5" OR "G6")
+          MOVE ORMD-TASA-PACTADA     TO ESS-TASA-RENDIMIENTO
+          MOVE ESS-PLAZO-VTO         TO ESS-PLAZO-REAL-SUBASTA-BXO
+          ENTER C "PRECIO_SCUPON" OF L-CALMDP USING ESS-TASA-RENDIMIENTO,
+                                                    ESS-PLAZO-REAL-SUBASTA-BXO,
+                                                    INST-PRED-NOMINAL-DEFAULT
+                                              GIVING ESS-PRECIO-INICIAL
+          MOVE ESS-PRECIO-INICIAL TO DSS-PRECIO-INI
+          MOVE 0 TO WSS-PTN
+          INSPECT DSS-PRECIO-INI TALLYING WSS-PTN FOR LEADING SPACES
+          IF FUNCTION LENGTH (DSS-PRECIO-INI) > WSS-PTN
+             MOVE DSS-PRECIO-INI (WSS-PTN + 1:)
+               TO WSS-PRECIO-INI
+          END-IF
+          MOVE 0 TO WSS-PTN
+          INSPECT DSS-PRECIO-INI TALLYING WSS-PTN FOR LEADING SPACES
+          IF FUNCTION LENGTH (DSS-PRECIO-INI) > WSS-PTN
+             MOVE DSS-PRECIO-INI (WSS-PTN + 1:)
+               TO WSS-PREC-INI-ACT
+          END-IF
+       END-IF
+       MOVE "0" TO WSS-PLAZO-CUPON-CALC
+       PERFORM 2323110-CONCATENA-CAMPOS
+       PERFORM 9000000-ESCRIBE-ARCHIVO-TEXTO.
+
+*-------------------------------
+ 2400600-PROCESA-OPS-RANGO-TERC.
+    MOVE ZEROES TO ESS-FLAG-FIN-PROCESO.
+    PERFORM 2400200-ASIGNA-EMISORA-RANGO.
+    PERFORM 9000000-FETCH-OPS-RANGO-TERC.
+
+*-------------------------------
+ 2400800-PROCESA-OPS-RANGO-MESA.
+    MOVE ZEROES TO ESS-FLAG-FIN-PROCESO.
+    PERFORM 2400200-ASIGNA-EMISORA-RANGO.
+    PERFORM 9000000-FETCH-OPS-RANGO-MESA.
+
+*-------------------------------
+ 2800000-DATOS-PEND-APLICAR.
+    MOVE SPACES TO ESS-CVE-UNIDAD.
+    MOVE ZEROES TO ESS-VALOR-REF-INI
+                   ESS-VALOR-REF-VEN.
+    IF TRMD-CODX-STATUS-TIPO-ORDEN = ESS-CONX-EDO-PEND-AP
+       IF TRMD-CVE-TIPO-ORDEN = ESS-CONX-TASA-DOLAR
+          PERFORM 2810000-CALCULA-DATOS-DOLAR
+       ELSE
+          IF TRMD-CVE-TIPO-ORDEN = ESS-CONX-TASA-REAL
+             PERFORM 2820000-CALCULA-DATOS-UDI
+          END-IF
+       END-IF
+       IF ES88-FLAG-FIN-PROCESO-OFF
+          PERFORM 2830000-CALCULA-DATOS-COMUNES.
+
+*-------------------------------
+ 2810000-CALCULA-DATOS-DOLAR.
+    MOVE ESS-CONX-DOLAR        TO ESS-CVE-UNIDAD.
+    MOVE ORMD-FECH-LIQUIDACION TO HTCA-FECH-CIERRE.
+    MOVE ESS-CONX-DOLAR        TO HTCA-CVE-MONEDA.
+    MOVE ZEROES                TO ESS-VALOR-REF-INI.
+    PERFORM 9000000-SEL-HISTCAM-FECMON.
+    IF ES88-FLAG-FIN-PROCESO-OFF
+       MOVE HTCA-PROP-TIPO-CAMBIO TO ESS-VALOR-REF-INI
+       MOVE TRAN-FECH-APLICACION  TO HTCA-FECH-CIERRE
+       PERFORM 9000000-OPEN-SHISTCAM
+       IF ES88-FLAG-FIN-PROCESO-OFF
+          PERFORM 9000000-FETCH-SHISTCAM
+          IF ES88-FLAG-FIN-PROCESO-OFF
+             MOVE HTCA-PROP-TIPO-CAMBIO TO ESS-VALOR-REF-VEN
+             COMPUTE TRMD-PRED-TRANSACCION =
+                    (TRMD-PRED-TRANSACCION * HTCA-PROP-TIPO-CAMBIO)
+                ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+          END-IF
+          PERFORM 9000000-CLOSE-SHISTCAM.
+
+*-------------------------------
+ 2820000-CALCULA-DATOS-UDI.
+    MOVE ESS-CONX-UDI          TO ESS-CVE-UNIDAD.
+    MOVE ORMD-FECH-LIQUIDACION TO HUNI-FECH-PUBLICACION-UNIDAD.
+    MOVE ESS-CONX-UDI          TO HUNI-CVE-INDICADOR-MERCADO.
+    PERFORM 9000000-SEL-HISTUNI-PRECXFECCV.
+    IF ES88-FLAG-FIN-PROCESO-OFF
+       MOVE HUNI-PREG-INDICADOR  TO ESS-VALOR-REF-INI
+       MOVE TRAN-FECH-APLICACION TO HUNI-FECH-PUBLICACION-UNIDAD
+       PERFORM 9000000-OPEN-SHISTUNI
+       IF ES88-FLAG-FIN-PROCESO-OFF
+          PERFORM 9000000-FETCH-SHISTUNI
+          IF ES88-FLAG-FIN-PROCESO-OFF
+             MOVE HUNI-PREG-INDICADOR TO ESS-VALOR-REF-VEN
+             COMPUTE TRMD-PRED-TRANSACCION =
+                    (TRMD-PRED-TRANSACCION * HUNI-PREG-INDICADOR)
+                ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+          END-IF
+          PERFORM 9000000-CLOSE-SHISTUNI.
+*
+ 2830000-CALCULA-DATOS-COMUNES.
+    COMPUTE TRAN-IMPO-TRANSACCION =
+           (TRMD-TIT-TRANSACCION * TRMD-PRED-TRANSACCION)
+       ON SIZE ERROR PERFORM 2910000-ON-SIZE-ERROR
+    END-COMPUTE.
+    INITIALIZE                LSSTCOST
+       REPLACING NUMERIC      DATA BY ZEROS
+                 ALPHANUMERIC DATA BY SPACES.
+    MOVE TRMD-PRED-TRANSACCION TO LSS-PARN-PRECIO    OF LSSTCOST.
+    MOVE EMIS-PREG-NOMINAL     TO LSS-PARN-VAL-NOM   OF LSSTCOST.
+    MOVE TRMD-PLZO-DIAS        TO LSS-PARN-DIAS-VENC OF LSSTCOST.
+    PERFORM 7000000-CALL-MDTCOST.
+    IF ES88-FLAG-FIN-PROCESO-OFF
+       MOVE LSS-PARN-RESULTADO OF LSSTCOST TO TRMD-TASA-DESCUENTO.
+
+*-------------------------------
+ 2500000-PROCESA-POSICION.
+    MOVE 0   TO ESS-FLAG-FIN-PROCESO.
+    MOVE "N" TO ESS-BAND-FIN-POSICION.
+    MOVE ZEROES TO SQLCODEX
+    IF WSS-PARN-FECH-PROCESO < ESS-FECH-SISTEMA
+       PERFORM 9000000-OPEN-POSI-HIST
+       MOVE "N" TO ESS-PROCESO-HOY
+    ELSE
+       PERFORM 9000000-OPEN-POSICION
+       MOVE "S" TO ESS-PROCESO-HOY
+    END-IF
+    IF ES88-BAND-FIN-POSICION-NO
+       IF ES88-PROCESO-HOY-SI
+          PERFORM 9000000-FETCH-POSICION
+       ELSE
+          PERFORM 9000000-FETCH-POSI-HIST
+       END-IF
+       PERFORM 2500100-LEE-POSICION UNTIL ES88-BAND-FIN-POSICION-SI
+    END-IF
+    IF ES88-PROCESO-HOY-SI
+       PERFORM 9000000-CLOSE-POSICION
+    ELSE
+       PERFORM 9000000-CLOSE-POSI-HIST
+    END-IF
+
+******* INICIA CAMBIOS ALEJANDRO PEREZ R. 20/05/2008
+******* Posición pasiva.
+    MOVE "N" TO ESS-BAND-FIN-SOFERWAR
+    EXEC SQL OPEN CUR_WARR_PAS END-EXEC
+    PERFORM 2500100-ESCRIBE-POS-PASIVA UNTIL ES88-BAND-FIN-SOFERWAR-SI
+    EXEC SQL CLOSE CUR_WARR_PAS END-EXEC
+    .
+
+*-------------------------------
+ 2500100-ESCRIBE-POS-PASIVA.
+
+            EXEC SQL
+             FETCH CUR_WARR_PAS
+             INTO
+                 :VECP-TASA
+                ,:VECP-TASA-RENDIMIENTO
+                ,:OFWA-DESC-VALOR
+                ,:OFWA-CVE-SERIE-VALOR
+                ,:OFWA-FECH-VENCIMIENTO
+                ,:OFWA-FECH-EMISION
+                ,:OFWA-PORC-RETORNABLE
+                ,:OFWA-PREC-LOTE
+                ,:VAWA-SLDO-TITULOS-EXTERNA
+                ,:OFWA-NUM-TITULOS
+                ,:OFWA-NUM-CONTRATO
+           END-EXEC
+
+           IF SQLCODEX = 100
+              MOVE "S" TO ESS-BAND-FIN-SOFERWAR
+           END-IF
+
+            IF SQLCODEX = 0
+            MOVE OFWA-DESC-VALOR         TO WSS-EMISORA
+            MOVE OFWA-CVE-SERIE-VALOR    TO WSS-SERIE
+            MOVE OFWA-FECH-EMISION       TO WSS-FECHA-EMISION
+            MOVE OFWA-FECH-VENCIMIENTO   TO WSS-FECHA-VENC-EMI
+            MOVE OFWA-NUM-TITULOS        TO WSS-NUM-TITULOS
+            MOVE OFWA-NUM-CONTRATO       TO WSS-NUM-CONTRATO
+
+            MOVE WSS-NUM-TITULOS         TO WSS-NUM-TITULOS-INT
+            MOVE WSS-NUM-TITULOS-INT     TO WSS-NUM-TITULOS-PROD
+            COMPUTE OFWA-PORC-RETORNABLE = OFWA-PORC-RETORNABLE / 100
+            COMPUTE WSS-NUM-TITULOS-PROD = WSS-NUM-TITULOS-PROD * OFWA-PORC-RETORNABLE
+            COMPUTE WSS-NUM-TITULOS-PROD = WSS-NUM-TITULOS-PROD * OFWA-PREC-LOTE
+            MOVE WSS-NUM-TITULOS-PROD    TO WSS-NUM-TITULOS-INT
+            MOVE WSS-NUM-TITULOS-INT     TO WSS-NUM-TITULOS
+*           MOVE WSS-NUM-TITULOS TO WSS-NUM-TITULOS-INT
+*           MOVE WSS-NUM-TITULOS-INT TO WSS-NUM-TITULOS-PROD
+*           COMPUTE OFWA-PORC-RETORNABLE = OFWA-PORC-RETORNABLE / 100
+*           COMPUTE WSS-NUM-TITULOS-INT = WSS-NUM-TITULOS-INT * OFWA-PORC-RETORNABLE
+*           COMPUTE WSS-NUM-TITULOS-INT = WSS-NUM-TITULOS-INT * OFWA-PREC-LOTE
+*           MOVE WSS-NUM-TITULOS-PROD TO WSS-NUM-TITULOS
+            MOVE WSS-FECHA-EMISION TO W-EDIASHABIL-FECHA-INI
+            MOVE WSS-FECHA-VENC-EMI TO W-EDIASHABIL-FECHA-FIN
+
+            CALL "ENTREDIASHABIL" OF CFFECHAS
+                         USING W-EDIASHABIL-FECHA-INI
+                               W-EDIASHABIL-FECHA-FIN
+                               W-EDIASHABIL-DIAS-HAB
+                               W-EDIASHABIL-RESULTADO
+
+            MOVE ESS-H-FECH-APLICACION TO W-EDIASHABIL-FECHA-INI
+                        CALL "ENTREDIASHABIL" OF CFFECHAS
+                         USING W-EDIASHABIL-FECHA-INI
+                               W-EDIASHABIL-FECHA-FIN
+                               W-EDIASHABIL-DIAS-HAB-MTY
+                               W-EDIASHABIL-RESULTADO
+
+            PERFORM 2323110-CONCATENA-CAMPOS-PAS
+            PERFORM 9000000-ESCRIBE-ARCHIVO-TEXTO
+           END-IF
+ .
+
+*-------------------------------
+ 2323110-CONCATENA-CAMPOS-PAS.
+    MOVE 1 TO WSS-REG-OPE-PNT
+  PERFORM 2323111-MARCA-FECHA-VALOR
+
+     STRING "WI"                 DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-SERIE             DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-FECHA-EMISION     DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-FECHA-VENC-EMI    DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           "1"                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-NUM-TITULOS       DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           " "                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           " "                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           " "                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           " "                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           " "                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           " "                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           " "                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-NUM-TITULOS       DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           " "                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           " "                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           " "                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           " "                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           W-EDIASHABIL-DIAS-HAB-MTY DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           "SELL"                DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           " "                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           " "                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           W-EDIASHABIL-DIAS-HAB-MTY DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           "MXN"                 DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           " "                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           W-EDIASHABIL-DIAS-HAB DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           " "                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           "0"                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           " "                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           "I"                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           "N"                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           "N"                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           "0"                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           "SELL"                DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           "Casa"                DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           "0"                   DELIMITED BY SPACE
+           WSS-SEP               DELIMITED BY SIZE
+           WSS-NUM-CONTRATO      DELIMITED BY SPACE
+           ESS-CR ESS-LF
+           DELIMITED BY SIZE
+      INTO RSS-REG-OPE WITH POINTER WSS-REG-OPE-PNT.
+      INITIALIZE WSS-REG-OPE.
+*     PERFORM     0000-PRUEB
+*     MOVE   "N"    TO     WSS-RANGO-SI-NO
+      MOVE  SPACES  TO     WSS-RANGO-SI-NO
+      MOVE  ZEROS   TO     WSS-TOTAL-TERM
+      MOVE  ZEROS   TO     WSS-TERM
+      MOVE  ZEROS   TO     WSS-RESTA-RESULT.
+
+*-------------------------------
+ 2500100-LEE-POSICION.
+    IF ES88-PROCESO-HOY-SI
+       MOVE POSC-SLDO-TIT-INICIAL  TO ESS-SLDO-TIT-INICIAL
+       MOVE POSC-TIT-ENTRADA       TO ESS-TIT-ENTRADA
+       MOVE POSC-TIT-SALIDA        TO ESS-TIT-SALIDA
+       MOVE POSC-SLDO-IMPO-INICIAL TO ESS-SLDO-IMPO-INICIAL
+       MOVE POSC-IMPO-ENTRADA      TO ESS-IMPO-ENTRADA
+       MOVE POSC-IMPO-SALIDA       TO ESS-IMPO-SALIDA
+       MOVE POSC-NUMF-POSICION     TO ESS-NUMF-POSICION
+       MOVE POSC-CVE-TIPO-SALDO    TO ESS-CVE-TIPO-SALDO
+       MOVE POSC-NUM-CONTRATO      TO ESS-NUM-CONTRATO
+    ELSE
+       MOVE HPOS-SLDO-TIT-INICIAL  TO ESS-SLDO-TIT-INICIAL
+       MOVE HPOS-TIT-ENTRADA       TO ESS-TIT-ENTRADA
+       MOVE HPOS-TIT-SALIDA        TO ESS-TIT-SALIDA
+       MOVE HPOS-SLDO-IMPO-INICIAL TO ESS-SLDO-IMPO-INICIAL
+       MOVE HPOS-IMPO-ENTRADA      TO ESS-IMPO-ENTRADA
+       MOVE HPOS-IMPO-SALIDA       TO ESS-IMPO-SALIDA
+       MOVE HPOS-NUMF-POSICION     TO ESS-NUMF-POSICION
+       MOVE HPOS-CVE-TIPO-SALDO    TO ESS-CVE-TIPO-SALDO
+       MOVE HPOS-NUM-CONTRATO      TO ESS-NUM-CONTRATO
+    END-IF
+    MOVE ZEROES TO ESS-POSI-TIT-FINAL.
+    COMPUTE ESS-POSI-TIT-FINAL = ESS-SLDO-TIT-INICIAL + ESS-TIT-ENTRADA - ESS-TIT-SALIDA
+      ON SIZE ERROR
+         MOVE ZEROES TO ESS-POSI-TIT-FINAL.
+    IF ESS-POSI-TIT-FINAL NOT = ZEROES
+       INITIALIZE WSS-REG-OPE
+       MOVE CTOP-CVE-INSTRUMENTO     TO WSS-TIPO-INSTRUM
+       MOVE EMIS-DESC-VALOR          TO WSS-EMISORA
+       MOVE EMIS-CVE-SERIE-VALOR     TO WSS-SERIE
+       MOVE EMIS-CVE-TIPO-VALOR      TO WSS-TIPO-VALOR
+       MOVE EMIS-FECH-EMISION        TO WSS-FECHA-EMISION
+       MOVE EMIS-FECH-VENCIMIENTO-RF TO WSS-FECHA-VENC-EMI
+       MOVE ESS-NUM-CONTRATO         TO WSS-NUM-CONTRATO
+
+       PERFORM 2500120-LLENA-DATOS-POSICION
+    END-IF
+    IF ES88-PROCESO-HOY-SI
+       PERFORM 9000000-FETCH-POSICION
+    ELSE
+       PERFORM 9000000-FETCH-POSI-HIST
+    END-IF.
+
+*-------------------------------
+ 2500120-LLENA-DATOS-POSICION.
+** Tipo de posicion
+    IF ESS-CVE-TIPO-SALDO = "DIRE"
+       IF ESS-POSI-TIT-FINAL > ZEROES
+          MOVE "VTAREP" TO WSS-TIPO-POSIC
+       ELSE
+          MOVE "CAREPO" TO WSS-TIPO-POSIC
+       END-IF
+    ELSE
+       IF ESS-POSI-TIT-FINAL > ZEROES
+          MOVE "VCREPO" TO WSS-TIPO-POSIC
+       ELSE
+          MOVE "CAREPO" TO WSS-TIPO-POSIC
+       END-IF
+    END-IF
+** En caso de ser negativo se multiplica por -1 para quitarle el signo
+    IF ESS-POSI-TIT-FINAL < ZEROES
+      MULTIPLY ESS-POSI-TIT-FINAL BY -1 GIVING ESS-POSI-TIT-FINAL
+    END-IF
+    MOVE EMIS-PREG-NOMINAL           TO DSS-VALOR-NOMINAL-EMI.
+    MOVE ZEROES TO WSS-PTN
+** Valor nominal
+    INSPECT DSS-VALOR-NOMINAL-EMI TALLYING WSS-PTN FOR LEADING SPACES
+    IF FUNCTION LENGTH (DSS-VALOR-NOMINAL-EMI) > WSS-PTN
+       MOVE DSS-VALOR-NOMINAL-EMI (WSS-PTN + 1:)
+         TO WSS-VALOR-NOMINAL-EMI
+    END-IF
+** Monto nominal
+    MOVE ZEROES TO ESS-FACE-AMOUNT
+    COMPUTE ESS-FACE-AMOUNT = ESS-POSI-TIT-FINAL * EMIS-PREG-NOMINAL
+       ON SIZE ERROR
+          MOVE ZEROES TO ESS-FACE-AMOUNT
+    END-COMPUTE
+    MOVE ESS-FACE-AMOUNT TO DSS-MONTO-NOMINAL
+    MOVE 0 TO WSS-PTN
+    INSPECT DSS-MONTO-NOMINAL TALLYING WSS-PTN FOR LEADING SPACES
+    IF FUNCTION LENGTH (DSS-MONTO-NOMINAL) > WSS-PTN
+       MOVE DSS-MONTO-NOMINAL (WSS-PTN + 1:)
+         TO WSS-MONTO-NOMINAL
+    END-IF
+** Tasa de mercado y sobretasa
+   MOVE EMIS-NUM-PRODUCTO TO ESS-NUM-PRODUCTO-ANT
+   PERFORM 2323460-OBTEN-TASA-MERCADO
+** Datos del cupon
+   MOVE CTOP-CVE-INSTRUMENTO TO PROP-CVE-INSTRUMENTO
+   PERFORM 2323230-DETERMINA-CUPON
+*- LMLN 06
+   IF ES88-CALCULA-TASA-SI
+      MOVE EMIS-NUM-PRODUCTO        TO ESS-NUM-PRODUCTO-ANT
+      MOVE EMIS-NUM-CUPON-PAGO-RV   TO ESS-NUM-CUPON-ANT
+      MOVE EMIS-FECH-EMISION        TO ESS-FECH-EMIS-ANT
+      MOVE EMIS-PLZO-PAGO-CUPON-RF  TO ESS-PLAZO-TEOR-ANT
+      PERFORM 2323440-OBTEN-DATOS-CUPON
+   ELSE
+      MOVE "0" TO WSS-PLAZO-CUPON-CALC
+   END-IF
+** Titulos
+   MOVE ESS-POSI-TIT-FINAL TO DSS-NUM-TITULOS
+   MOVE 0 TO WSS-PTN
+   INSPECT DSS-NUM-TITULOS TALLYING WSS-PTN FOR LEADING SPACES
+   IF FUNCTION LENGTH (DSS-NUM-TITULOS) > WSS-PTN
+      MOVE DSS-NUM-TITULOS (WSS-PTN + 1:)
+        TO WSS-NUM-TITULOS
+   END-IF
+** Importe inicial
+   COMPUTE ESS-POSI-MON-FINAL = ESS-SLDO-IMPO-INICIAL + ESS-IMPO-ENTRADA - ESS-IMPO-SALIDA
+      ON SIZE ERROR
+         MOVE ZEROES TO ESS-POSI-MON-FINAL
+   END-COMPUTE
+** Si es negativo se le quita el signo
+   IF ESS-POSI-MON-FINAL < ZEROES
+      MULTIPLY ESS-POSI-MON-FINAL BY -1 GIVING ESS-POSI-MON-FINAL
+   END-IF
+   MOVE ESS-POSI-MON-FINAL TO DSS-MONTO-INI
+   MOVE 0 TO WSS-PTN
+   INSPECT DSS-MONTO-INI TALLYING WSS-PTN FOR LEADING SPACES
+   IF FUNCTION LENGTH (DSS-MONTO-INI) > WSS-PTN
+      MOVE DSS-MONTO-INI (WSS-PTN + 1:)
+        TO WSS-MONTO-INI
+   END-IF
+** Precio inicial (precio sucio)
+   COMPUTE ESS-PRECIO-INICIAL = ESS-POSI-MON-FINAL / ESS-POSI-TIT-FINAL
+   MOVE ESS-PRECIO-INICIAL   TO DSS-PRECIO-INI.
+   MOVE 0 TO WSS-PTN
+   INSPECT DSS-PRECIO-INI TALLYING WSS-PTN FOR LEADING SPACES
+   IF FUNCTION LENGTH (DSS-PRECIO-INI) > WSS-PTN
+      MOVE DSS-PRECIO-INI (WSS-PTN + 1:)
+        TO WSS-PRECIO-INI
+   END-IF
+** Precio inicial actualizado (precio limpio)
+   MOVE WSS-PRECIO-INI TO WSS-PREC-INI-ACT
+** Fecha de regreso
+   MOVE ESS-NUMF-POSICION TO WSS-FECHA-REGRESO
+** Plazo al vencimiento de la emisora
+   MOVE WSS-PARN-FECH-PROCESO    TO ESS-FECH-1
+   MOVE EMIS-FECH-VENCIMIENTO-RF TO ESS-FECH-2
+   PERFORM 7000000-CALL-DAYSBTWDATES
+   IF ES88-FLAG-FIN-PROCESO-OFF
+      MOVE ESS-NUM-DIAS-COMP       TO ESS-PLAZO-VTO
+   ELSE
+*     MOVE 9999                    TO ESS-PLAZO-VTO           AAMA - 30A
+      MOVE 999999                  TO ESS-PLAZO-VTO
+      MOVE ZEROES                  TO ESS-FLAG-FIN-PROCESO
+   END-IF
+   MOVE ESS-PLAZO-VTO              TO WSS-PLAZO-VTO
+** Divisa
+   MOVE "MXN"                      TO WSS-DIVISA
+** Precio Valmer
+   MOVE EMIS-DESC-VALOR            TO ESS-EMIS-DESC-ANT
+   MOVE EMIS-CVE-SERIE-VALOR       TO ESS-EMIS-CVE-ANT
+   MOVE EMIS-CVE-TIPO-VALOR        TO ESS-EMIS-TIPO-ANT
+   PERFORM 2323500-OBTEN-PRECIO-VALMER
+** Indicadores de sintetico y ops. de rango
+    MOVE "N" TO WSS-SINT-SI-NO
+*   MOVE "N" TO WSS-RANGO-SI-NO
+** Valores con ceros
+    MOVE "0" TO WSS-TASA-PACTADA
+                WSS-PLAZO
+                WSS-PRECIO-REGR
+                WSS-MONTO-REGR
+                WSS-PLAZO-TOT
+                WSS-TASA-CURVA.
+    IF WSS-TIPO-POSIC = "VTAREP"
+       ENTER C "MARKMKT_CAR" OF L-CALMDP USING  ESS-PRECIO-VALMER,
+                                                ESS-PRECIO-INICIAL,
+                                                ESS-POSI-TIT-FINAL
+                                         GIVING ESS-MTM
+       MOVE ESS-MTM              TO DSS-MTM
+       MOVE 0 TO WSS-PTN
+       INSPECT DSS-MTM TALLYING WSS-PTN FOR LEADING SPACES
+       IF FUNCTION LENGTH (DSS-MTM) > WSS-PTN
+          MOVE DSS-MTM (WSS-PTN + 1:)
+            TO WSS-MTM
+       END-IF
+    ELSE
+       MOVE "0" TO WSS-MTM
+    END-IF
+
+******* INICIA CAMBIOS ALEJANDRO PEREZ R. 20/05/2008
+******* Posición activa.
+
+
+*    EXEC SQL
+*            SELECT
+*            VECP_TASA,
+*            VECP_TASA_RENDIMIENTO
+*            INTO
+*            :VECP-TASA,
+*            :VECP-TASA-RENDIMIENTO
+*            FROM =SVECTOR, =SOFERWAR
+*            WHERE VECP_FECH_PROCESO = :WSS-FECHA-PROCESO
+*            AND VECP_PROVEEDOR = "VALMER"
+*            AND VECP_EMISORA = OFWA_DESC_VALOR
+*            AND VECP_SERIE = OFWA_CVE_SERIE_VALOR
+*            AND OFWA_NUM_CONTRATO   = :CONT-NUM-CONTRATO
+*            BROWSE ACCESS
+*    END-EXEC
+
+*    MOVE VECP-TASA TO WSS-TASA-MERCADO
+*    MOVE VECP-TASA-RENDIMIENTO TO WSS-TASA-DESCUENTO
+
+*    PERFORM 2323110-CONCATENA-CAMPOS
+    PERFORM 2323110-CONCATENA-CAMPOS-ACT
+    PERFORM 9000000-ESCRIBE-ARCHIVO-TEXTO
+   .
+
+*-------------------------------
+ 2910000-ON-SIZE-ERROR.
+    MOVE 2                       TO ESS-FLAG-FIN-PROCESO.
+
+*-------------------------------
+ 3000000-MODULO-CONTROL-FINAL.
+    MOVE "TERMINA" TO ESS-LA1-EDO.
+    PERFORM 1200000-DISPLAY-INICIO-TERMINO.
+    CONTINUE.
+*
+**********************************************************************
+***                Rutinas comunes en este proceso                 ***
+**********************************************************************
+*-------------------------------
+ 7000000-CALL-DAYSBTWDATES.
+*   CALL "DAYSBTWDATES" OF L-FECHAS USING ESS-FECH-1,       AAMA - 30A
+    CALL "DAYSBTWDATEINT" OF L-FECHAS USING ESS-FECH-1,
+                                            ESS-FECH-2,
+                                            ESS-NUM-DIAS-COMP.
+*   IF ESS-NUM-DIAS-COMP = -9999                            AAMA - 30A
+    IF ESS-NUM-DIAS-COMP = -999999
+       MOVE 2                       TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 7000000-CALL-DATEOFFSET.
+*   CALL "DATEOFFSET" OF L-FECHAS USING ESS-FECH-1,         AAMA - 30A
+    CALL "DATEOFFSETIN" OF L-FECHAS USING ESS-FECH-1,
+                                          ESS-FECH-2,
+                                          ESS-NUM-DIAS-COMP.
+    IF ESS-FECH-2 = ZERO
+       MOVE 2                       TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 7000000-CALL-SIGHABIL.
+*   CALL "SIGHABIL" OF L-FECHAS USING ESS-FECH-1,          AAMA - 30A
+    CALL "SIGHABINT" OF L-FECHAS USING ESS-FECH-1,
+                                       ESS-FECH-2,
+*                                      ESS-NUM-DIAS-COMP.   AAMA - 30A
+                                       ESS-NUM-DIAS-COMP,
+                                       ESS-PAIS.
+    IF ESS-FECH-2 = ZERO
+       MOVE 2                       TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 7000000-CALL-SCTRSIS.
+    CALL "LCONEDO" OF L-CONEDO USING LSSCOEDO.
+    IF LS88-BAND-COEDO-ERROR-SI
+       MOVE 2                               TO ESS-FLAG-FIN-PROCESO
+    END-IF.
+*-------------------------------
+ 7000000-CALL-MDTCOST.
+    CALL "MDTCOST" OF L-CALCMD USING LSSTCOST.
+    IF LSS-PARN-RESULTADO OF LSSTCOST = -9999
+       MOVE 2                               TO ESS-FLAG-FIN-PROCESO
+    END-IF.
+*-------------------------------
+ 7000000-CALL-MDTREND.
+    CALL "MDTREND" OF L-CALCMD USING LSSTREND.
+    IF LSS-PARN-RESULTADO OF LSSTREND = -9999
+       MOVE 2                               TO ESS-FLAG-FIN-PROCESO
+    END-IF.
+*-------------------------------
+ 7000000-CALL-MDINTDEV.
+    CALL "MDINTDEV" OF L-CALCMD USING LSSINDEV.
+    IF LSS-PARN-RESULTADO OF LSSINDEV = -9999
+       MOVE 2                               TO ESS-FLAG-FIN-PROCESO
+    END-IF.
+*-------------------------------
+ 7000000-CALL-MDVNAJUS.
+    CALL "MDVNAJUS" OF L-CALCMD USING LSSVNAJU.
+    IF LSS-PARN-RESULTADO OF LSSVNAJU = -9999
+       MOVE 2                               TO ESS-FLAG-FIN-PROCESO
+    END-IF.
+*-------------------------------
+ 7000000-CALL-MDFORMPRECIO.
+    CALL "MDFORMPRECIO" OF L-CALCMD USING LSSFPREC.
+    IF LSS-PARN-RESULTADO OF LSSFPREC = -9999
+       MOVE 2                               TO ESS-FLAG-FIN-PROCESO
+    END-IF.
+*-------------------------------
+ 7000000-CALL-MDPRECIO.
+    CALL "MDPRECIO" OF L-CALCMD USING LSSPREC.
+    IF LSS-PARN-RESULTADO OF LSSPREC = -9999
+       MOVE 2                               TO ESS-FLAG-FIN-PROCESO
+    END-IF.
+*
+**********************************************************************
+***                Rutinas comunes en los sistemas                 ***
+**********************************************************************
+*
+?SOURCE $DESA12.SCOGLCPA.C85DEFPG (MENSAJES-OPERADOR)
+*
+**********************************************************************
+***                  Accesos a tablas y archivos                   ***
+**********************************************************************
+*-------------------------------
+ 9000000-OPEN-STRAMDIN-RESUMEN.
+   EXEC SQL  OPEN  CUR_TRAMDIN_RESUMEN   END-EXEC.
+   IF NOT ES88-SQLCODEX-OK
+      MOVE 2  TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 9000000-OPEN-SIN-ASIGNAR.
+   EXEC SQL  OPEN  CUR_SIN_ASIGNAR   END-EXEC.
+   IF NOT ES88-SQLCODEX-OK
+      MOVE 2  TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 9000000-OPEN-STRAMDIN-CPA-VTA.
+   EXEC SQL  OPEN  CUR_TRAMDIN_CPA_VTA   END-EXEC.
+   IF NOT ES88-SQLCODEX-OK
+      MOVE "S" TO ESS-BAND-FIN-STRAMDIN.
+*-------------------------------
+ 9000000-OPEN-OPS-RANGO-INTE.
+   EXEC SQL  OPEN  CUR_RANGO_INTE   END-EXEC.
+   IF NOT ES88-SQLCODEX-OK
+      MOVE "S" TO ESS-BAND-FIN-OPS-RANGO
+      MOVE 2   TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 9000000-OPEN-OPS-RANGO-TERC.
+   EXEC SQL  OPEN  CUR_RANGO_TERC   END-EXEC.
+   IF NOT ES88-SQLCODEX-OK
+      MOVE "S" TO ESS-BAND-FIN-OPS-RANGO
+      MOVE 2   TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 9000000-OPEN-OPS-RANGO-MESA.
+   EXEC SQL  OPEN  CUR_RANGO_MESA   END-EXEC.
+   IF NOT ES88-SQLCODEX-OK
+      MOVE "S" TO ESS-BAND-FIN-OPS-RANGO
+      MOVE 2   TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 9000000-OPEN-POSICION.
+   EXEC SQL  OPEN  CUR_POSICION   END-EXEC.
+   IF NOT ES88-SQLCODEX-OK
+      MOVE "S" TO ESS-BAND-FIN-POSICION
+      MOVE 2   TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 9000000-OPEN-POSI-HIST.
+   EXEC SQL  OPEN  CUR_POSI_HIST  END-EXEC.
+   IF NOT ES88-SQLCODEX-OK
+      MOVE "S" TO ESS-BAND-FIN-POSICION
+      MOVE 2   TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 9000000-OPEN-EMIS-RANGO.
+   EXEC SQL  OPEN  CUR_EMIS_RANGO   END-EXEC.
+   IF NOT ES88-SQLCODEX-OK
+      MOVE "S" TO ESS-BAND-FIN-EMIS-RANGO.
+*-------------------------------
+ 9000000-OPEN-CUR-SHISTASI.
+   EXEC SQL  OPEN  CUR_SHISTASI  END-EXEC.
+   IF NOT ES88-SQLCODEX-OK
+      MOVE "S" TO ESS-BAND-TASA-VIG.
+*-------------------------------
+ 9000000-FETCH-SIN-ASIGNAR.
+   EXEC SQL
+      FETCH CUR_SIN_ASIGNAR
+         INTO
+            :CTOP-CVE-INSTRUMENTO
+           ,:ORMD-FECH-CAPTURA
+           ,:INST-PRED-NOMINAL-DEFAULT
+           ,:INST-CVE-INSTRUMENTO-BMV
+           ,:ORMD-TASA-PACTADA
+           ,:ORMD-TIT-ASIGNADOS
+           ,:ORMD-PLZO-DD-ORDEN
+           ,:ORMD-IMPO-REMANENTE
+           ,:CVEO-CODX-TIPO-MOVIMIENTO
+   END-EXEC
+   IF NOT ES88-SQLCODEX-OK
+      MOVE "S" TO ESS-BAND-FIN-SIN-ASIGNAR
+      MOVE 2   TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 9000000-FETCH-STRAMDIN-RESUMEN.
+   EXEC SQL
+      FETCH CUR_TRAMDIN_RESUMEN
+         INTO
+            :CTOP-CVE-MESA              ,
+            :PROP-CVE-INSTRUMENTO       ,
+            :TRAN-CVE-PARTICION         ,
+            :TRAN-NUMF-TRANSACCION      ,
+            :TRAN-NUMF-ORDEN            ,
+            :TRAN-FECH-APLICACION       ,
+            :TRAN-NUM-CONTRATO          ,
+            :TRAN-NUM-PRODUCTO          ,
+            :TRAN-CVE-OPER              ,
+            :ORMD-FECH-LIQUIDACION      ,
+            :ORMD-TASA-PACTADA          ,
+            :TRAN-IMPO-TRANSACCION      ,
+            :TRMD-CVE-TIPO-SALDO        ,
+            :TRMD-CODX-TIPO-CLIENTE     ,
+            :TRMD-TIT-TRANSACCION       ,
+            :TRMD-PRED-TRANSACCION      ,
+            :TRMD-PLZO-DIAS             ,
+            :TRMD-TASA-DESCUENTO        ,
+            :TRMD-IMPO-PREMIO           ,
+            :TRMD-IMPO-NETO             ,
+            :TRMD-CVE-TIPO-ORDEN        ,
+            :TRMD-CODX-STATUS-TIPO-ORDEN,
+            :CVME-CODX-MOV-TITULO       ,
+            :EMIS-CVE-TIPO-VALOR        ,
+            :EMIS-DESC-VALOR            ,
+            :EMIS-CVE-SERIE-VALOR       ,
+            :EMIS-FECH-EMISION          ,
+            :EMIS-FECH-VENCIMIENTO-RF   ,
+            :EMIS-PREG-NOMINAL          ,
+            :EMIS-NUM-CUPON-PAGO-RV     ,
+            :EMIS-CVE-UNIDAD-VALUADORA  ,
+            :EMIS-NUM-PERSONA-EMISOR    ,
+            :EMIS-BAND-COBRA-IMPUESTOS-RV,
+            :EMIS-PLZO-PAGO-CUPON-RF
+   END-EXEC
+   IF NOT ES88-SQLCODEX-OK
+      MOVE "S" TO ESS-BAND-FIN-STRAMDIN.
+**    MOVE  1  TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 9000000-FETCH-STRAMDIN-CPA-VTA.
+   EXEC SQL
+      FETCH CUR_TRAMDIN_CPA_VTA
+         INTO
+            :CTOP-CVE-MESA              ,
+            :PROP-CVE-INSTRUMENTO       ,
+            :TRAN-CVE-PARTICION         ,
+            :TRAN-NUMF-TRANSACCION      ,
+            :TRAN-NUMF-ORDEN            ,
+            :TRAN-FECH-APLICACION       ,
+            :TRAN-NUM-CONTRATO          ,
+            :TRAN-NUM-PRODUCTO          ,
+            :TRAN-CVE-OPER              ,
+            :ORMD-FECH-LIQUIDACION      ,
+            :ORMD-TASA-PACTADA          ,
+            :TRAN-IMPO-TRANSACCION      ,
+            :TRMD-CVE-TIPO-SALDO        ,
+            :TRMD-CODX-TIPO-CLIENTE     ,
+            :TRMD-TIT-TRANSACCION       ,
+            :TRMD-PRED-TRANSACCION      ,
+            :TRMD-PLZO-DIAS             ,
+            :TRMD-TASA-DESCUENTO        ,
+            :TRMD-IMPO-PREMIO           ,
+            :TRMD-IMPO-NETO             ,
+            :TRMD-CVE-TIPO-ORDEN        ,
+            :TRMD-CODX-STATUS-TIPO-ORDEN,
+            :CVME-CODX-MOV-TITULO       ,
+            :EMIS-CVE-TIPO-VALOR        ,
+            :EMIS-DESC-VALOR            ,
+            :EMIS-CVE-SERIE-VALOR       ,
+            :EMIS-FECH-EMISION          ,
+            :EMIS-FECH-VENCIMIENTO-RF   ,
+            :EMIS-PREG-NOMINAL          ,
+            :EMIS-NUM-CUPON-PAGO-RV     ,
+            :EMIS-CVE-UNIDAD-VALUADORA  ,
+            :EMIS-NUM-PERSONA-EMISOR    ,
+            :EMIS-BAND-COBRA-IMPUESTOS-RV,
+            :EMIS-PLZO-PAGO-CUPON-RF
+   END-EXEC
+   IF NOT ES88-SQLCODEX-OK
+      MOVE "S" TO ESS-BAND-FIN-STRAMDIN.
+*-------------------------------
+ 9000000-FETCH-OPS-RANGO-INTE.
+   EXEC SQL
+      FETCH CUR_RANGO_INTE
+         INTO
+           :MESC-CVE-MESA,
+           :ORMD-CVE-TIPO-SOLICITANTE,
+           :ORMD-CVE-OPER,
+           :CTOP-CVE-INSTRUMENTO,
+           :ORMD-FECH-CAPTURA,
+           :ORMD-FECH-LIQUIDACION,
+           :ORMD-FECH-VTO-ORDEN,
+           :ORMD-PLZO-DD-ORDEN,
+           :ORMD-TASA-PACTADA,
+           :ORMD-TIT-ASIGNADOS,
+           :ORMD-IMPO-ORDEN,
+           :ORMD-IMPO-PREMIO,
+           :ORMD-NUMF-ORDEN,
+           :ORMD-PRED-ASIGNACION
+   END-EXEC.
+   IF NOT ES88-SQLCODEX-OK
+      MOVE "S" TO ESS-BAND-FIN-OPS-RANGO
+      MOVE 2   TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 9000000-FETCH-OPS-RANGO-TERC.
+   EXEC SQL
+      FETCH CUR_RANGO_TERC
+          INTO
+            :MESC-CVE-MESA,
+            :ORMD-CVE-TIPO-SOLICITANTE,
+            :ORMD-CVE-OPER,
+            :CTOP-CVE-INSTRUMENTO,
+            :ORMD-FECH-CAPTURA,
+            :ORMD-FECH-LIQUIDACION,
+            :ORMD-FECH-VTO-ORDEN,
+            :ORMD-PLZO-DD-ORDEN,
+            :ORMD-TASA-PACTADA,
+            :ORMD-TIT-ASIGNADOS,
+            :ORMD-IMPO-ORDEN,
+            :ORMD-IMPO-PREMIO,
+            :ORMD-NUM-CONTRATO-SOLICITA,
+            :ORMD-NUMF-ORDEN,
+            :ORMD-PRED-ASIGNACION
+   END-EXEC.
+   IF NOT ES88-SQLCODEX-OK
+      MOVE "S" TO ESS-BAND-FIN-OPS-RANGO
+      MOVE 2   TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 9000000-FETCH-OPS-RANGO-MESA.
+   EXEC SQL
+      FETCH CUR_RANGO_MESA
+          INTO
+            :MESC-CVE-MESA,
+            :ORMD-CVE-TIPO-SOLICITANTE,
+            :ORMD-CVE-OPER,
+            :CTOP-CVE-INSTRUMENTO,
+            :ORMD-FECH-CAPTURA,
+            :ORMD-FECH-LIQUIDACION,
+            :ORMD-FECH-VTO-ORDEN,
+            :ORMD-PLZO-DD-ORDEN,
+            :ORMD-TASA-PACTADA,
+            :ORMD-TIT-ASIGNADOS,
+            :ORMD-IMPO-ORDEN,
+            :ORMD-IMPO-PREMIO,
+            :ORMD-NUMF-ORDEN,
+            :ORMD-PRED-ASIGNACION
+   END-EXEC.
+   IF NOT ES88-SQLCODEX-OK
+      MOVE "S" TO ESS-BAND-FIN-OPS-RANGO
+      MOVE 2   TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 9000000-FETCH-EMIS-RANGO.
+   EXEC SQL
+      FETCH CUR_EMIS_RANGO
+         INTO
+            :EMIS-NUM-PRODUCTO,
+            :EMIS-CVE-TIPO-VALOR,
+            :EMIS-DESC-VALOR,
+            :EMIS-CVE-SERIE-VALOR,
+            :EMIS-FECH-VENCIMIENTO-RF,
+            :EMIS-FECH-EMISION,
+            :EMIS-NUM-CUPON-PAGO-RV,
+            :EMIS-CVE-UNIDAD-VALUADORA,
+            :EMIS-NUM-PERSONA-EMISOR,
+            :EMIS-NUM-CUPONES-EMITIDOS-RF,
+            :EMIS-PLZO-PAGO-CUPON-RF,
+            :EMIS-BAND-COBRA-IMPUESTOS-RV,
+            :SINT-NUM-PRODUCTO INDICATOR :ESS-NULL-IND
+   END-EXEC.
+   IF NOT ES88-SQLCODEX-OK
+      MOVE "S" TO ESS-BAND-FIN-EMIS-RANGO.
+*-------------------------------
+ 9000000-FETCH-CUR-SHISTASI.
+   EXEC SQL
+      FETCH CUR_SHISTASI
+         INTO
+            :HTAI-TASA-VIGENTE
+   END-EXEC.
+   IF NOT ES88-SQLCODEX-OK
+      MOVE "S" TO ESS-BAND-TASA-VIG.
+*-------------------------------
+ 9000000-FETCH-POSICION.
+  EXEC SQL
+     FETCH CUR_POSICION
+        INTO
+            :EMIS-NUM-PRODUCTO
+           , :EMIS-CVE-TIPO-VALOR
+           , :EMIS-DESC-VALOR
+           , :EMIS-CVE-SERIE-VALOR
+           , :EMIS-FECH-EMISION
+           , :EMIS-PREG-NOMINAL
+           , :EMIS-NUM-CUPON-PAGO-RV
+           , :EMIS-FECH-VENCIMIENTO-RF
+           , :EMIS-PLZO-PAGO-CUPON-RF
+           , :CTOP-CVE-INSTRUMENTO
+           , :POSC-CVE-TIPO-SALDO
+           , :POSC-SLDO-TIT-INICIAL
+           , :POSC-TIT-ENTRADA
+           , :POSC-TIT-SALIDA
+           , :POSC-SLDO-IMPO-INICIAL
+           , :POSC-IMPO-ENTRADA
+           , :POSC-IMPO-SALIDA
+           , :POSC-FECH-APLICACION
+           , :POSC-NUMF-POSICION
+           , :POSC-NUM-CONTRATO
+  END-EXEC.
+  IF NOT ES88-SQLCODEX-OK
+     MOVE "S" TO ESS-BAND-FIN-POSICION
+     MOVE 2   TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 9000000-FETCH-POSI-HIST.
+  EXEC SQL
+     FETCH CUR_POSI_HIST
+        INTO
+            :EMIS-NUM-PRODUCTO
+          , :EMIS-CVE-TIPO-VALOR
+          , :EMIS-DESC-VALOR
+          , :EMIS-CVE-SERIE-VALOR
+          , :EMIS-FECH-EMISION
+          , :EMIS-PREG-NOMINAL
+          , :EMIS-NUM-CUPON-PAGO-RV
+          , :EMIS-FECH-VENCIMIENTO-RF
+          , :EMIS-PLZO-PAGO-CUPON-RF
+          , :CTOP-CVE-INSTRUMENTO
+          , :HPOS-CVE-TIPO-SALDO
+          , :HPOS-SLDO-TIT-INICIAL
+          , :HPOS-TIT-ENTRADA
+          , :HPOS-TIT-SALIDA
+          , :HPOS-SLDO-IMPO-INICIAL
+          , :HPOS-IMPO-ENTRADA
+          , :HPOS-IMPO-SALIDA
+          , :HPOS-FECH-APLICACION
+          , :HPOS-NUMF-POSICION
+          , :HPOS-NUM-CONTRATO
+  END-EXEC.
+  IF NOT ES88-SQLCODEX-OK
+     MOVE "S" TO ESS-BAND-FIN-POSICION
+     MOVE 2   TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 9000000-CLOSE-STRAMDIN-RESUMEN.
+   EXEC SQL  CLOSE  CUR_TRAMDIN_RESUMEN   END-EXEC.
+   MOVE 1 TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 9000000-CLOSE-SIN-ASIGNAR.
+   EXEC SQL  CLOSE  CUR_SIN_ASIGNAR  END-EXEC.
+*-------------------------------
+ 9000000-CLOSE-TRAMDIN-CPA-VTA.
+   EXEC SQL  CLOSE  CUR_TRAMDIN_CPA_VTA END-EXEC.
+*-------------------------------
+ 9000000-CLOSE-OPS-RANGO-INTE.
+   EXEC SQL CLOSE  CUR_RANGO_INTE   END-EXEC.
+*-------------------------------
+ 9000000-CLOSE-OPS-RANGO-TERC.
+   EXEC SQL CLOSE  CUR_RANGO_TERC   END-EXEC.
+*-------------------------------
+ 9000000-CLOSE-OPS-RANGO-MESA.
+   EXEC SQL CLOSE  CUR_RANGO_MESA   END-EXEC.
+*-------------------------------
+ 9000000-CLOSE-POSICION.
+   EXEC SQL CLOSE  CUR_POSICION     END-EXEC.
+   MOVE 1 TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 9000000-CLOSE-POSI-HIST.
+   EXEC SQL CLOSE  CUR_POSI_HIST    END-EXEC.
+   MOVE 1 TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 9000000-CLOSE-EMIS-RANGO.
+   EXEC SQL CLOSE  CUR_EMIS_RANGO   END-EXEC.
+*-------------------------------
+ 9000000-CLOSE-CUR-SHISTASI.
+   EXEC SQL CLOSE  CUR_SHISTASI     END-EXEC.
+*-------------------------------
+ 9000000-OPEN-STASMERC-FECHA.
+   EXEC SQL  OPEN  CUR_TASMERC_FECHA     END-EXEC.
+   IF ES88-SQLCODEX-OK
+      MOVE "S" TO ESS-BAND-TASA-MERC.
+*-------------------------------
+ 9000000-FETCH-STASMERC-FECHA.
+   EXEC SQL
+      FETCH CUR_TASMERC_FECHA
+         INTO
+            :TASM-NUM-PRODUCTO,
+            :TASM-CVE-TASA-LIDER,
+            :TASM-VALOR-TASA-LIDER,
+            :TASM-DIFERENCIAL,
+            :TASM-TASA-MERCADO
+   END-EXEC
+   IF NOT ES88-SQLCODEX-OK
+      MOVE "N" TO ESS-BAND-TASA-MERC.
+*-------------------------------
+ 9000000-CLOSE-STASMERC-FECHA.
+   EXEC SQL  CLOSE  CUR_TASMERC_FECHA     END-EXEC.
+*-------------------------------
+ 9000000-SEL-HISTCAM-FECMON.
+?SOURCE $DESA12.BADPRCPA.CFHTCAM ( SEL-HISTCAM-FECMON )
+   IF NOT ES88-SQLCODEX-OK
+      MOVE 2  TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 9000000-OPEN-SHISTCAM.
+?SOURCE $DESA12.BADPRCPA.CFHTCAM ( OPEN-HISTCAM-ULTIMO )
+   IF NOT ES88-SQLCODEX-OK
+      MOVE 2  TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 9000000-FETCH-SHISTCAM.
+?SOURCE $DESA12.BADPRCPA.CFHTCAM ( FETCH-HISTCAM-ULTIMO )
+   IF NOT ES88-SQLCODEX-OK
+      MOVE 2   TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 9000000-CLOSE-SHISTCAM.
+?SOURCE $DESA12.BADPRCPA.CFHTCAM ( CLOSE-HISTCAM-ULTIMO )
+ .
+*-------------------------------
+ 9000000-SEL-HISTUNI-PRECXFECCV.
+?SOURCE $DESA12.BADPRCPA.CFHUNI ( SEL-HISTUNI-PRECXFECCV )
+   IF NOT ES88-SQLCODEX-OK
+      MOVE 2  TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 9000000-OPEN-SHISTUNI.
+?SOURCE $DESA12.BADPRCPA.CFHUNI (  OPEN-HISTUNI-ULTIMO )
+   IF NOT ES88-SQLCODEX-OK
+      MOVE 2  TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 9000000-FETCH-SHISTUNI.
+?SOURCE $DESA12.BADPRCPA.CFHUNI ( FETCH-HISTUNI-ULTIMO )
+   IF NOT ES88-SQLCODEX-OK
+      MOVE 2   TO ESS-FLAG-FIN-PROCESO.
+*
+ 9000000-CLOSE-SHISTUNI.
+?SOURCE $DESA12.BADPRCPA.CFHUNI ( CLOSE-HISTUNI-ULTIMO )
+ .
+*-------------------------------
+ 9000000-SEL-CONTRATO.
+?SOURCE $DESA12.BADPECPA.CFCONTRA ( SEL-CONTRATO-X-TIT )
+   IF NOT ES88-SQLCODEX-OK
+      MOVE 2  TO ESS-FLAG-FIN-PROCESO.
+*-------------------------------
+ 9000000-SEL-CUPON-TASAXNUMPYC.
+?SOURCE $DESA12.BADPRCPA.CFCUPON ( SEL-CUPON-TASAXNUMPYC )
+    IF ES88-SQLCODEX-OK
+       MOVE "S" TO ESS-BAND-CORTA-CUPON
+    ELSE
+       MOVE "N" TO ESS-BAND-CORTA-CUPON.
+*-------------------------------
+ 9000000-SEL-STASMERC-XNUMFEC.
+    EXEC SQL
+       SELECT TASM_NUM_PRODUCTO,
+              TASM_CVE_TASA_LIDER,
+              TASM_VALOR_TASA_LIDER,
+              TASM_DIFERENCIAL,
+              TASM_TASA_MERCADO
+       INTO  :TASM-NUM-PRODUCTO,
+             :TASM-CVE-TASA-LIDER,
+             :TASM-VALOR-TASA-LIDER,
+             :TASM-DIFERENCIAL,
+             :TASM-TASA-MERCADO
+       FROM =STASMERC
+       WHERE TASM_NUM_PRODUCTO   = :TASM-NUM-PRODUCTO AND
+             TASM_FECH_ACTUALIZA = :TASM-FECH-ACTUALIZA
+       BROWSE ACCESS
+    END-EXEC.
+    IF ES88-SQLCODEX-OK
+       MOVE "S" TO ESS-BAND-TASA-MERC.
+*
+*- LMLN 05
+*-------------------------------
+* 9000000-SELECT-SINSUNIV-X-CVE.
+*    EXEC SQL
+*         SELECT INUN_CODX_VALOR
+*         INTO  :INUN-CODX-VALOR
+*         FROM  =SINSUNIV
+*         WHERE INUN_CVE_INSTRUMENTO     = :INUN-CVE-INSTRUMENTO    AND
+*               INUN_CVE_CARACTERISTICA  = :INUN-CVE-CARACTERISTICA AND
+*               INUN_NUMF_CARACTERISTICA = :INUN-NUMF-CARACTERISTICA
+*         BROWSE ACCESS
+*    END-EXEC.
+*    IF NOT ES88-SQLCODEX-OK
+*       MOVE "S" TO ESS-CALCULA-TASA.
+
+*-------------------------------
+ 9000030-LEE-CARACTERISTICA.
+*- LMLN 05. Inicio
+    CALL "LEE-CARACTERISTICAS" OF CARINS-LIB
+       USING LSS-CAR-PARN-ENTRADA
+             LSS-CAR-PARN-SALIDA
+             LSS-CAR-PARX-ERROR.
+    MOVE LSS-CAR-SQL-ERROR TO SQLCODEX.
+    IF NOT ES88-SQLCODEX-OK
+       MOVE "S" TO ESS-CALCULA-TASA
+    END-IF.
+*- LMLN 05. Fin
+
+*-------------------------------
+ 9000000-SELECT-SVECTOR-1.
+    MOVE "N" TO ESS-BAND-FIN-SVECTOR.
+    EXEC SQL
+         SELECT VECP_PRECIO_SUCIO_HOY,
+                VECP_TASA
+         INTO  :VECP-PRECIO-SUCIO-HOY,
+               :VECP-TASA
+         FROM  =SVECTOR
+         WHERE VECP_FECH_PROCESO        = :VECP-FECH-PROCESO       AND
+               VECP_PROVEEDOR           = "VALMER"                 AND
+               VECP_TIPO_VALOR          = :VECP-TIPO-VALOR         AND
+               VECP_EMISORA             = :VECP-EMISORA            AND
+               VECP_SERIE               = :VECP-SERIE
+         BROWSE ACCESS
+    END-EXEC.
+    IF NOT ES88-SQLCODEX-OK
+       MOVE "S" TO ESS-BAND-FIN-SVECTOR.
+*-------------------------------
+ 9000000-SELECT-SVECTOR-2.
+    MOVE "N" TO ESS-BAND-FIN-SVECTOR.
+    EXEC SQL
+         SELECT VECP_PRECIO_LIMPIO_HOY,
+                VECP_INTERES_HOY
+         INTO  :VECP-PRECIO-LIMPIO-HOY,
+               :VECP-INTERES-HOY
+         FROM  =SVECTOR
+         WHERE VECP_FECH_PROCESO        = :VECP-FECH-PROCESO       AND
+               VECP_PROVEEDOR           = "VLMRHC"                 AND
+               VECP_TIPO_VALOR          = :VECP-TIPO-VALOR         AND
+               VECP_EMISORA             = :VECP-EMISORA            AND
+               VECP_SERIE               = :VECP-SERIE
+         BROWSE ACCESS
+    END-EXEC.
+    IF NOT ES88-SQLCODEX-OK
+       MOVE "S" TO ESS-BAND-FIN-SVECTOR.
+*-------------------------------
+ 9000000-SELECT-SINSTRUM.
+   EXEC SQL
+      SELECT INST_CVE_INSTRUMENTO_BMV,
+             INST_PRED_NOMINAL_DEFAULT
+      INTO  :INST-CVE-INSTRUMENTO-BMV,
+            :INST-PRED-NOMINAL-DEFAULT
+      FROM =SINSTRUM
+      WHERE INST_CVE_INSTRUMENTO = :INST-CVE-INSTRUMENTO
+      BROWSE ACCESS
+   END-EXEC.
+   IF NOT ES88-SQLCODEX-OK
+      MOVE "S" TO ESS-BAND-FIN-SINSTRUM.
+*
+ 9000000-SELECT-SINTETIC-X-NUM.
+   MOVE "N" TO ESS-BAND-FIN-SINTETIC.
+   EXEC SQL
+      SELECT SINT_NUM_PRODUCTO
+      INTO  :SINT-NUM-PRODUCTO
+      FROM =SINTETIC
+      WHERE SINT_NUM_PRODUCTO = :SINT-NUM-PRODUCTO
+      BROWSE ACCESS
+   END-EXEC.
+   IF NOT ES88-SQLCODEX-OK
+      MOVE "S" TO ESS-BAND-FIN-SINTETIC.
+*-------------------------------
+ 9000000-SELECT-SHISTASI.
+    MOVE "N" TO ESS-BAND-TASA-VIG.
+    EXEC SQL
+       SELECT HTAI_TASA_VIGENTE
+       INTO  :HTAI-TASA-VIGENTE
+       FROM =SHISTASI
+       WHERE HTAI_CVE_INDICADOR_MERCADO = :HTAI-CVE-INDICADOR-MERCADO AND
+             :ESS-H-FECH-APLICACION BETWEEN HTAI_FECH_INI_VIGENCIA AND HTAI_FECH_FIN_VIGENCIA
+       BROWSE ACCESS
+    END-EXEC.
+    IF NOT ES88-SQLCODEX-OK
+       MOVE "S" TO ESS-BAND-TASA-VIG.
+*-------------------------------
+ 9000000-SELECT-STASBREM.
+    MOVE "N" TO ESS-BAND-FIN-TASBREM.
+    EXEC SQL
+       SELECT TBRE_TASA
+       INTO  :TBRE-TASA
+       FROM =STASBREM
+       WHERE TBRE_NUM_PRODUCTO = :TBRE-NUM-PRODUCTO
+       AND   TBRE_FECHA        = :TBRE-FECHA
+       BROWSE ACCESS
+    END-EXEC.
+    IF NOT ES88-SQLCODEX-OK
+       MOVE "S" TO ESS-BAND-FIN-TASBREM.
+*-------------------------------
+ 9000000-ABRE-ARCHIVO-TEXTO.
+    ENTER TAL "COBOLFILEINFO" OF COBOLLIB
+      USING FILE-OPERIES WSS-AV-ERROR WSS-AV-NOM-INT WSS-AV-NUM.
+
+    ENTER TAL "OLDFILENAME_TO_FILENAME_"
+      USING WSS-AV-NOM-INT WSS-AV-NOM-EXT WSS-AV-NOM-LNG
+     GIVING WSS-AV-ERROR.
+
+    IF WSS-AV-ERROR > 0
+       MOVE "FILE-OPERIES" TO ESS-MEDF-ID-ARCHIVO
+       MOVE WSS-AV-ERROR   TO ESS-MEDF-GUARD-ERR
+       PERFORM 0000000-DECL-RTN-COMUN.
+
+    SET W88-AV-ESCRITURA TO TRUE
+    SET W88-AV-COMPARTIDO TO TRUE
+
+    ENTER TAL "FILE_OPEN_"
+      USING WSS-AV-NOM-EXT(1:WSS-AV-NOM-LNG)
+            WSS-AV-NUM
+            WSS-AV-MDO-ACCESO
+            WSS-AV-MDO-EXCLUSION
+     GIVING WSS-AV-ERROR
+
+    IF WSS-AV-ERROR > 0 OR WSS-AV-NUM = -1
+       MOVE "FILE-OPERIES" TO ESS-MEDF-ID-ARCHIVO
+       MOVE WSS-AV-ERROR   TO ESS-MEDF-GUARD-ERR
+       PERFORM 0000000-DECL-RTN-COMUN.
+
+*-------------------------------
+ 9000000-ESCRIBE-ARCHIVO-TEXTO.
+    COMPUTE WSS-REG-OPE-PNT = WSS-REG-OPE-PNT - 1
+    ENTER TAL "WRITEX"
+      USING WSS-AV-NUM
+           RSS-REG-OPE
+           WSS-REG-OPE-PNT.
+
+    ENTER TAL "FILE_GETINFO_"
+      USING -1
+            WSS-AV-ERROR
+     GIVING WSS-AV-ERROR
+
+    IF WSS-AV-ERROR > 0
+       MOVE "FILE-OPERIES" TO ESS-MEDF-ID-ARCHIVO
+       MOVE WSS-AV-ERROR   TO ESS-MEDF-GUARD-ERR
+       PERFORM 0000000-DECL-RTN-COMUN.
+*-------------------------------
+ 9000000-CIERRA-ARCHIVO-TEXTO.
+    ENTER TAL "FILE_CLOSE_" USING WSS-AV-NUM
+                           GIVING WSS-AV-ERROR.
+
+    IF WSS-AV-ERROR > 0 OR WSS-AV-NUM = -1
+       MOVE "FILE-OPERIES" TO ESS-MEDF-ID-ARCHIVO
+       MOVE WSS-AV-ERROR   TO ESS-MEDF-GUARD-ERR
+       PERFORM 0000000-DECL-RTN-COMUN.
+*-------------------------------
+ 0000000-DECL-RTN-COMUN.
+    MOVE WSS-PARA-TGMID-PROGFILE    TO ESS-MEDP-PROGFILE
+    MOVE WSS-PARA-TGMID-PROCNAME    TO ESS-MEDP-PROCNAME
+    MOVE WSS-PARA-TGMID-USERGROUP   TO ESS-MEDP-USERGROUP
+    MOVE FUNCTION CURRENT-DATE      TO ESS-FECH-Y-TMPO-COMPUTADOR
+    MOVE ESS-FECH-COMPUTADOR        TO ESS-MEDP-FECHA-SIST
+    MOVE ESS-HHMNSS-COMPUTADOR      TO ESS-MEDP-HHMNSS-SIST
+    MOVE ESS-CODX-FILE-STATUS-GRAL  TO ESS-MEDF-COBOL-ERR
+
+    DISPLAY ESS-MSG-ERRORES-DECLARATIVES
+            ESS-MSG-ERR-DECL-LINAST     UPON  HOME-TERM
+    ENTER TAL "ABEND".
+**********************************************************************
+***                        FIN DEL PROGRAMA                        ***
+**********************************************************************
