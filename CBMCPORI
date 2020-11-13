@@ -1,6 +1,6 @@
 *** MODIFICACION CONTRATO 7051688-3                                       *
 ***************************************************************************
-*                  CASA DE BOLSA INVERLAT, S.A. DE C.V.                   *
+*                  CASA DE BOLSA , S.A. DE C.V.                   *
 ***************************************************************************
 *                       Identificacion del Servidor                       *
 *                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~                       *
@@ -8,31 +8,6 @@
 * Abstraccion ..: Transacciones                                           *
 * Proceso.......: Batch que genera la informacion de Mercado de Capitales *
 * ....................................................................... *
-*                          Historial de Cambios                           *
-*                          ~~~~~~~~~~~~~~~~~~~~                           *
-* Num | Fecha         | Autor                                             *
-*     | Descripcion   |                                                   *
-* .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. *
-* 09    21/OCT/2015     Jose Eduardo Lozada Chong (jelozada)              *
-*       Modificación a reporte warrants se agrega columna CONTRATO        *
-* 08    02/JUL/2008     Alejandro Gabriel Pérez Rodríguez (AGPR)          *
-*       Modificación para adecuación a warrants de Mdo. CaCONTRATO        *
-* 07    08/AGO/2006     Luis Manuel Lazaro Nava (LMLN)                    *
-*       Instrumento LBON se comporta similar a BREM.                      *
-* 06    27/JUL/2006     Luis Manuel Lázaro Nava (LMLN)                    *
-*       Corrige la condicion de calculo de cupon en posicion NEBA.        *
-* 05    10/Jun/2005     Luis Manuel Lázaro Nava  (LMLN)                   *
-*       Modificaciones para esquema de caracteristicas por emisora.       *
-* 04    07/Ene/2005     Angel Alfonso Martínez Arroyo    (AAMA)           *
-*       Integrar Operaciones Mayores a 30 Anios          (30A)            *
-* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - *
-* 03    25/AGO/2004     Emilio G B   AUMENTA WSS-NUM-OPS (400)            *
-* 02    30/OCT/2002     LUIS LAZARO. AUMENTA WSS-NUM-OPS.                 *
-* 01    25/JUL/2000     gpbuenrostro                                      *
-*       Cambio en el formato del archivo OPERIES                          *
-* .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. *
-* 00    15/FEB/2000     MONICA RIOS SOSA                                  *
-*       Desarrollo Inicial                                                *
 ***************************************************************************
 * Directivas de Compilacion "OBLIGATORIAS"
 ?ENV COMMON;HIGHPIN;HIGHREQUESTERS;RUNNAMED
@@ -1109,7 +1084,7 @@
 
  01 ESS-LIN-AVI-3.
     03 FILLER                          PIC  X(50) VALUE
-       "SE LLENO LA TABLA DE COMPRAS-VENTAS. ¡¡ AVISAR !! ".
+       "SE LLENO LA TABLA DE COMPRAS-VENTAS. ã€€ AVISAR !! ".
 
 
 * Constantes usadas en este programa.
@@ -2927,7 +2902,7 @@
        MOVE WSS-FECHA-VENC-EMI       TO ESS-FECH-2
        PERFORM 7000000-CALL-DAYSBTWDATES
        MOVE ESS-NUM-DIAS-COMP        TO ESS-DXD-AMORTIZACION
-** Para el caso de los UMS (años de 360 dias en lugar de 365)
+** Para el caso de los UMS (aé§‰s de 360 dias en lugar de 365)
 **     IF PROP-CVE-INSTRUMENTO = "UMS"
 **        MOVE
 **     END-IF
@@ -3282,7 +3257,7 @@
     END-IF
 
 ******* INICIA CAMBIOS ALEJANDRO PEREZ R. 20/05/2008
-******* Posición pasiva.
+******* Posicié«‡ pasiva.
     MOVE "N" TO ESS-BAND-FIN-SOFERWAR
     EXEC SQL OPEN CUR_WARR_PAS END-EXEC
     PERFORM 2500100-ESCRIBE-POS-PASIVA UNTIL ES88-BAND-FIN-SOFERWAR-SI
@@ -3628,7 +3603,7 @@
     END-IF
 
 ******* INICIA CAMBIOS ALEJANDRO PEREZ R. 20/05/2008
-******* Posición activa.
+******* Posicié«‡ activa.
 
 
 *    EXEC SQL
