@@ -4,7 +4,7 @@
 ***************************************************************************
 *                       Identificacion del Servidor                       *
 *                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~                       *
-* Sistema ......: SIBUR - Mercado de Capitales Casa de Bolsa              *
+* Sistema ......: Mercado de Capitales Casa de Bolsa              *
 * Abstraccion ..: Transacciones                                           *
 * Proceso.......: Batch que genera la informacion de Mercado de Capitales *
 * ....................................................................... *
