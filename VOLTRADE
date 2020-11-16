@@ -14,7 +14,7 @@
 **********************************************************************
  IDENTIFICATION DIVISION.
  PROGRAM-ID.    VOLTRADE.
- AUTHOR.        GABRIELA ANDREA GONZALEZ GUTIERREZ.
+ AUTHOR.        .
 **********************************************************************
 
  ENVIRONMENT DIVISION.
@@ -653,7 +653,7 @@
  WHEN 0
       CONTINUE
  WHEN 100
-       DISPLAY "NO EXISTE M¡S INFORMACI”N " UPON HOME-TERM
+       DISPLAY "NO EXISTE M√ÅS INFORMACI√ìN " UPON HOME-TERM
  WHEN OTHER
         PERFORM 7000000-ERROR
         DISPLAY "AVISAR A SISTEMAS " UPON HOME-TERM
