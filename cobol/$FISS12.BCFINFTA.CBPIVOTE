@@ -18,7 +18,7 @@
 ***********************************************************************
  IDENTIFICATION DIVISION.
  PROGRAM-ID.    CBPIVOTE.
- AUTHOR.        FELIX NEVAREZ - ASISTICA.
+ AUTHOR.        .
  DATE-WRITTEN.  24/01/2015.
 
  ENVIRONMENT      DIVISION.
