@@ -1,0 +1,14 @@
+?TACL MACRO
+#FRAME
+  CLEAR ALL
+  SINK [#LOAD /KEEP 1/ $DCYC02.FODIMCA0.MLAVADOZ]
+  Genera_file_trans_rele
+  CLEAR ALL
+#UNFRAME
+
+
+
+
+
+
+

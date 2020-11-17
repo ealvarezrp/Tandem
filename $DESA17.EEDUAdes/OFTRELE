@@ -1,0 +1,14 @@
+CPYSVC01   PROCESS    PNODE=INVER.HIMALAYA                                      -
+                      SNODE=COMERMEX.ESA2                                       -
+                      SNODEID=(UIN4AML,K8MLT5SU)
+
+PASO01     COPY       FROM (DSN=$DESA11.FODI01.LBELE                      PNODE -
+                            DISP=(SHR)                                          -
+                            SYSOPTS="SET XLATE ON")                             -
+                      TO   (DSN=AMXOS.XLDDS.TRANSAC.RELEV.CAMBIOS         SNODE -
+                            DCB=(RECFM=FB                                       -
+                           ,LRECL=500                                           -
+                           ,DSORG=PS                                            -
+                           ,BLKSIZE=0)                                          -
+                            DISP=RPL)
+       EXIT

@@ -1,0 +1,140 @@
+?SECTION Genera_file_trans_rele MACRO
+#FRAME
+==*********************************************************************==
+==*01                    ** MLAVADOS **                               *==
+==*--                                                                 *==
+==*02         UNIDAD: PRODUCCION.                                     *==
+==*03     APLICACION: OPERACIONES RELEVANTES.                         *==
+==*04        SISTEMA: REPORTE DE OPERACIONES RELEVANTES               *==
+==*--                                                                 *==
+==*05       OBJETIVO: GENERACION DE REPORTE OPERACIONES RELEVANTES    *==
+==*--                                                                 *==
+==*06        PROCESO: MENSUAL.                                        *==
+==*07   PERIODICIDAD: MENSUAL (PRIMER DIA HABIL DEL MES).             *==
+==*08 CORRE FESTIVOS: NO.                                             *==
+==*09        HORARIO: NO APLICA.                                      *==
+==*10  PREREQUISITOS: NINGUNO.                                        *==
+==*11   PREDECESORES: PHXLDD01                                        *==
+==*12      SUCESORES: NINGUNO.                                        *==
+==*13   RUTA CRITICA: SI.                                             *==
+==*14     PLATAFORMA: TANDEM.                                         *==
+==*15   SERVIDOR/CPU:                                                 *==
+==*16    PRGM-SCRIPT: $CYC02.FODIMCA0.MLAVADOS                        *==
+==*17           USER: BIAF.BIAF                                       *==
+==*--                                                                 *==
+==*--              DESCRIPCION DE PARAMETROS SIMBOLICOS:              *==
+==*18                          NINGUNO                                *==
+==*--                                                                 *==
+==*--                    CODIGOS DE TERMINACION                       *==
+==*19                           0 = OK                                *==
+==*19                         1-8 = WARNING                           *==
+==*19                       9-999 = ERROR                             *==
+==*--                                                                 *==
+==*--                  INSTRUCCIONES ESPECIALES                       *==
+==*20      NINGUNA                                                    *==
+==*20                                                                 *==
+==*--                                                                 *==
+==*--                                                                 *==
+==*21 ELABORADO POR : ASISTICA           FECHA: 13-01-2018            *==
+==*22 MODIFICADO POR: AREA, NOMBRE, INICIALES,      FECHA: DD-MM-AAAA *==
+==*23 PROYECTO/OO/OT: REPORTE OPERACIONES DOLARES EN EFECTIVO         *==
+==*********************************************************************==
+
+
+#OUTPUT  --------------------------------------------------------------------------
+#OUTPUT  - SCOTIABANK INVERLAT                      REPORTE OPERACIONES RELEVANES -
+#OUTPUT  -                                                               MLAVADOS -
+#OUTPUT  -                                                                        -
+#OUTPUT  -            GENERACION DEL REPORTE OPERACIONES RELEVANTES               -
+#OUTPUT  -                                                                        -
+#OUTPUT  --------------------------------------------------------------------------
+#OUTPUT
+#OUTPUT
+CLEAR ALL
+DELETE DEFINE **
+TIME
+
+== =============================================== ==
+==  Carga macros auxiliares                        ==
+== =============================================== ==
+   SINK [#LOAD /KEEP 1/ $DATA11.ANDRES.FECHAS]
+   RUN $CYC02.DOPEOBA0.DEFREST
+   RUN $DATA11.ADBDMOBA.DEFREST
+   SETUP_DATES
+   ASSIGN FILE-OPER,    $DATA4.DCTLDTA0.OPER
+   ASSIGN FILE-RELE,    $CYC02.DINFDTA0.REL2
+   ASSIGN FILE-DFYI,    $CYC02.DOPEDTA0.FAYAIMP
+
+== =============================================== ==
+== Define variables generales                      ==
+== =============================================== ==
+   #PUSH fecha_param mes_ant anio_ant fecha_inicial anio
+   #PUSH dia_ant dia_ant_f  yyyy mm dd fecha_final  err
+   #SET yyyy [#CHARGET fecha_hoy_aaaammdd 1 to 4]
+   #SET mm   [#CHARGET fecha_hoy_aaaammdd 5 to 6]
+   #SET dd   [#CHARGET fecha_hoy_aaaammdd 7 to 8]
+   #SET anio [#CHARGET fecha_hoy_aaaammdd 3 to 4]
+   #SET mes_ant 00
+   #SET dia_ant 01
+   #SET dia_ant_f 31
+   #SETMANY err, [#ERRORNUMBERS]
+
+   #SET mes_ant [#COMPUTE [mm] -1]
+   [#IF [mes_ant] < 1
+      |THEN|
+         #SET mes_ant  12
+         #SET anio_ant [#COMPUTE [yyyy] -1]
+         #SET anio [#COMPUTE [anio] -1]
+      |ELSE|
+         #SET anio_ant [yyyy]
+   ]
+   [#IF [mes_ant] < 10
+      |THEN|
+         #SET mes_ant 0[mes_ant]
+   ]
+   #SET fecha_inicial [anio_ant][mes_ant][dia_ant]
+   #SET fecha_final [anio_ant][mes_ant][dia_ant_f]
+
+== =======================================================================================
+
+   #OUTPUT [fecha_inicial]
+   #OUTPUT [fecha_final]
+   #OUTPUT
+   #OUTPUT *=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
+   #OUTPUT * (INICIO)    REPROCESO PARA GENERAR REPORTE                          *
+   #OUTPUT * DE OPERACIONES RELEVANTES SERVIDOR BANCO (SOLO MENSUAL)             *
+   #OUTPUT *=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
+   #OUTPUT
+   TIME
+   PARAM FECHAINI [fecha_inicial]
+   PARAM FECHAFIN [fecha_final]
+   PARAM  TIPO           I
+   PARAM  LOCALIDAD      LRELE
+   PURGE  $DATA11.FODI01.LRELE
+
+   [#IF [#FILEINFO /EXISTENCE/ $DATA11.FODI01.LRELE]
+     |THEN|
+        PURGE $DATA11.FODI01.LRELE
+   ]
+
+   #OUTPUT
+   #OUTPUT Fecha Inicial ---> [fecha_inicial]
+   #OUTPUT Fecha Final   ---> [fecha_final]
+   #OUTPUT
+
+   RUN $CYC02.DINFOJA0.B8LOGREL/PRI 185, NAME $OPRE/
+
+   [#IF err |THEN| #ABEND/COMPLETIONCODE 1/ [#PROCESSINFO/PROCESSID/]]
+   [#IF [:_COMPLETION^PROCDEATH:Z^COMPLETION^CODE]
+   |THEN| #ABEND/COMPLETIONCODE 1/ [#PROCESSINFO/PROCESSID/]]
+
+   FUP DUP $DATA11.FODI01.LRELE,$DATA11.FODI01.LRE[mes_ant][anio],purge
+
+   #OUTPUT
+   #OUTPUT *=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
+   #OUTPUT * (FINAL)     REPROCESO PARA GENERAR REPORTE                          *
+   #OUTPUT * DE OPERACIONES RELEVANTES SERVIDOR DE BANCO (SOLO MENSUAL)          *
+   #OUTPUT *=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
+   #OUTPUT
+   CLEAR ALL
+#UNFRAME

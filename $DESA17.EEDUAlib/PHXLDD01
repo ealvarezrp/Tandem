@@ -1,0 +1,14 @@
+?TACL MACRO
+#FRAME
+  CLEAR ALL
+  SINK [#LOAD /KEEP 1/ $CYC02.FODIMCA0.MCB8RELE]
+  Registra_op_relevantes
+  CLEAR ALL
+#UNFRAME
+
+
+
+
+
+
+

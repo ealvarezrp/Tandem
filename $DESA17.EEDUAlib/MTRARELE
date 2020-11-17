@@ -1,0 +1,109 @@
+?SECTION transf_rep_relevantes MACRO
+#FRAME
+==*********************************************************************==
+==*01                    ** MTRARELE **                               *==
+==*--                                                                 *==
+==*02         UNIDAD: PRODUCCION.                                     *==
+==*03     APLICACION: OPERACIONES RELEVANTES                          *==
+==*04        SISTEMA: REPORTE DE OPERACIONES RELEVANTES               *==
+==*--                                                                 *==
+==*05       OBJETIVO: TRANSMISION REPORTE OPERACIONES RELEVANTES      *==
+==*--                                                                 *==
+==*06        PROCESO: MENSUAL.                                        *==
+==*07   PERIODICIDAD: MENSUAL                                         *==
+==*08 CORRE FESTIVOS: NO.                                             *==
+==*09        HORARIO: ?????                                           *==
+==*10  PREREQUISITOS: NINGUNO.                                        *==
+==*11   PREDECESORES: ????                                            *==
+==*12      SUCESORES: NINGUNO.                                        *==
+==*13   RUTA CRITICA: SI.                                             *==
+==*14     PLATAFORMA: TANDEM.                                         *==
+==*15   SERVIDOR/CPU: ?????                                           *==
+==*16    PRGM-SCRIPT: $CYC02.FODIMCE0.MTRARELE                        *==
+==*17           USER: ????????                                        *==
+==*--                                                                 *==
+==*--              DESCRIPCION DE PARAMETROS SIMBOLICOS:              *==
+==*18                          NINGUNO                                *==
+==*--                                                                 *==
+==*--                    CODIGOS DE TERMINACION                       *==
+==*19                           0 = OK                                *==
+==*19                         1-8 = WARNING                           *==
+==*19                       9-999 = ERROR                             *==
+==*--                                                                 *==
+==*--                  INSTRUCCIONES ESPECIALES                       *==
+==*20      ESTA MACRO HACE UNA CONEXION CON EL SERVIDOR DE AIX VIA FTI*==
+==*--                                                                 *==
+==*--                                                                 *==
+==*21 ELABORADO POR : ASISTICA                      FECHA: 15-01-2018 *==
+==*22 MODIFICADO POR: AREA, NOMBRE, INICIALES,      FECHA: DD-MM-AAAA *==
+==*23 PROYECTO/OO/OT: REPORTE DLLS EFECTIVO                           *==
+==*********************************************************************==
+#OUTPUT  --------------------------------------------------------------------------
+#OUTPUT  - SCOTIABANK INVERLAT                                                    -
+#OUTPUT  -                                                               MTRARELE -
+#OUTPUT  -                                                                        -
+#OUTPUT  -            TRASMISION DEL REPORTE DE OPERACIONES RELEVANTES            -
+#OUTPUT  -                                                                        -
+#OUTPUT  --------------------------------------------------------------------------
+#OUTPUT
+#OUTPUT
+CLEAR ALL
+TIME
+
+== =============================================== ==
+==  Carga macros auxiliares                        ==
+== =============================================== ==
+   SINK [#LOAD /KEEP 1/ $COR01.CORRMCA0.MCNDMOBY]
+
+== =============================================== ==
+== Define variables generales                      ==
+== =============================================== ==
+   #PUSH RCORD014
+   #PUSH RCORD015
+   #PUSH RCORD016
+   #PUSH sigue^ok run^resultado paso
+   #PUSH #INLINEPREFIX #INLINETO #INLINEOUT #INLINEECHO
+   #PUSH log^app log^line
+   #PUSH NDMCommand
+   #PUSH fname_ObCD
+   #PUSH mm dd
+
+== =============================================== ==
+== Calcula fechas de trabajo                       ==
+== =============================================== ==
+   #PUSH yyt mmt ddt FECJULt FecProc
+== CALCULAFECHA yyt mmt ddt FECJULt
+   #SET FecProc [yyt][mmt][ddt]
+
+== =============================================== ==
+== Asignacion de rutas para archivos de paso       ==
+== =============================================== ==
+   #SET sigue^ok 0
+   #SET #INLINEPREFIX +
+   #SET #INLINETO log^app
+   #SET #INLINEOUT 1
+   #SET #INLINEECHO 0
+
+== =======================================================================================
+   #SET paso 1
+   #OUTPUT
+   #OUTPUT *-----------------------------------------------------------------------------*
+   #OUTPUT * REALIZA TRANSFERENCIA DEL REPORTE OPERACIONES RELEVANTES                    *
+   #OUTPUT *-----------------------------------------------------------------------------*
+   #OUTPUT
+   TIME
+   #OUTPUT
+   #OUTPUT ------------------------------------------------
+   #OUTPUT Obey de Envio   : $CYC02.DOPEOBA0.OFTRELE
+   #OUTPUT ------------------------------------------------
+   #OUTPUT
+
+   NDM_SUBMIT $CYC02.DOPEOBA0.OFTRELE
+
+   #OUTPUT
+   #OUTPUT * FECHA/HORA FIN DE PROCESO *
+   TIME
+   #OUTPUT
+   #OUTPUT --------> FIN DEL PROCESO transf_rep_relevantes  <--------
+   CLEAR ALL
+#UNFRAME

@@ -1,0 +1,100 @@
+?SECTION Registra_op_relevantes MACRO
+#FRAME
+==*********************************************************************==
+==*01                    ** MCB8RELE **                               *==
+==*--                                                                 *==
+==*02         UNIDAD: PRODUCCION.                                     *==
+==*03     APLICACION: OPERACIONES RELEVANTES.                         *==
+==*04        SISTEMA: REGISTRA REPOSITORIO DE OPERACIONES RELEVANTES  *==
+==*04                                                                 *==
+==*--                                                                 *==
+==*05       OBJETIVO: AGREGA OPERACIONES RELEVANTES AL REPOSITORIO    *==
+==*--                                                                 *==
+==*06        PROCESO: DIARIO.                                         *==
+==*07   PERIODICIDAD: DIARIO (DIAS HABILES).                          *==
+==*08 CORRE FESTIVOS: NO.                                             *==
+==*09        HORARIO: FINAL DEL DIA.                                  *==
+==*10  PREREQUISITOS: NINGUNO.                                        *==
+==*11   PREDECESORES: NINGUNO.                                        *==
+==*12      SUCESORES: NINGUNO.                                        *==
+==*13   RUTA CRITICA: SI.                                             *==
+==*14     PLATAFORMA: TANDEM.                                         *==
+==*15   SERVIDOR/CPU:                                                 *==
+==*16    PRGM-SCRIPT: $CYC02.FODIMCA0.MCB8RELE                        *==
+==*17           USER: BIAF.BIAF                                       *==
+==*--                                                                 *==
+==*--              DESCRIPCION DE PARAMETROS SIMBOLICOS:              *==
+==*18                          NINGUNO                                *==
+==*--                                                                 *==
+==*--                    CODIGOS DE TERMINACION                       *==
+==*19                           0 = OK                                *==
+==*19                         1-8 = WARNING                           *==
+==*19                       9-999 = ERROR                             *==
+==*--                                                                 *==
+==*--                  INSTRUCCIONES ESPECIALES                       *==
+==*20      NINGUNA                                                    *==
+==*20                                                                 *==
+==*--                                                                 *==
+==*--                                                                 *==
+==*21 ELABORADO POR : ASISTICA           FECHA: 15-01-2018            *==
+==*22 MODIFICADO POR: AREA, NOMBRE, INICIALES,      FECHA: DD-MM-AAAA *==
+==*23 PROYECTO/OO/OT: REPORTE OPERACIONES DOLARES EN EFECTIVO         *==
+==*********************************************************************==
+
+
+#OUTPUT  --------------------------------------------------------------------------
+#OUTPUT  - SCOTIABANK INVERLAT                 REPOSITORIO OPERACIONES RELEVANTES -
+#OUTPUT  -                                                               MCB8RELE -
+#OUTPUT  -                                                                        -
+#OUTPUT  -            REGISTRA REPOSITORIO OPERACIONES RELEVANTES                 -
+#OUTPUT  -                                                                        -
+#OUTPUT  --------------------------------------------------------------------------
+#OUTPUT
+#OUTPUT
+CLEAR ALL
+DELETE DEFINE **
+TIME
+
+== =============================================== ==
+==  Carga macros auxiliares                        ==
+== =============================================== ==
+   SINK [#LOAD /KEEP 1/ $DATA11.ANDRES.FECHAS]
+== RUN $CYC02.DOPEOBA0.DEFREST
+== RUN $DATA11.ADBDMOBA.DEFREST
+   SETUP_DATES
+
+== desarrollo PU
+   ADD DEFINE =SFXCTEGR, FILE $TEMP08.TDM1017.SFXCTEGR
+   ADD DEFINE =SFXCTEDO, FILE $TEMP18.TDM1017.SFXCTEDO
+   ADD DEFINE =SFXCTEDC, FILE $TEMP17.TDM1017.SFXCTEDC
+   ADD DEFINE =SFXDQCT,  FILE $TEMP09.TDM1017.SFXDQCT
+   ADD DEFINE =SPERSONA, FILE $TCYC04.TDM1017.SPERSONA
+   ADD DEFINE =SDOMICIL, FILE $TEMP06.TDM1017.SDOMICIL
+   ADD DEFINE =SCONTRAT, FILE $TEMP06.TDM1017.SCONTRAT
+
+   ASSIGN FILE-OPER,      $DESA5.ASIDTA0.OPER
+   ASSIGN FILE-DQCT,      $DESA5.ASIDTA0.COTRANS
+   ASSIGN FILE-PARIFR,    $DESA5.ASIDTA0.PARIFR
+   ASSIGN FILE-RELEVANTE, $DESA5.ASIDTA0.REL2
+   ASSIGN FILE-DFYI,      $DESA5.ASIDTA0.FAYAIMP
+== =======================================================================================
+
+   #OUTPUT PARAM FECHA [fecha_hoy_aaaammdd]
+   #OUTPUT
+   #OUTPUT *=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
+   #OUTPUT * (INICIO)    REGISTRO DE OPERACIONES RELEVANTES EN REPOSITORIO       *
+   #OUTPUT *             DIARIO                                                  *
+   #OUTPUT *=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
+   #OUTPUT
+   TIME
+   PARAM FECHA [fecha_hoy_aaaammdd]
+
+   RUN $DCYC02.DINFOJA0.B8RELEPU
+   #OUTPUT
+   #OUTPUT *=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
+   #OUTPUT * (FINAL)     REGISTRO DE OPERACIONES RELEVANTES EN REPOSITORIO       *
+   #OUTPUT *             DIARIO                                                  *
+   #OUTPUT *=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
+   #OUTPUT
+   CLEAR ALL
+#UNFRAME
