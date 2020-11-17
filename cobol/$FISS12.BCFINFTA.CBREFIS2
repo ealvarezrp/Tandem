@@ -1,0 +1,2459 @@
+?SUPPRESS
+*  Version 13.0.001, 87546 Bytes - Nabucodonosor -
+*  Oct 15, 2015
+*
+*  New:
+*    - Income(1) is determined to be taxable depending on the type of the
+*      financial instrument and the type of the investor(2).
+*    - Adjusted transaction precedence rules.
+*    - Additional data to the per-transaction info: Costs, Order id & Date of
+*      last movement.
+*    - REIT securities are now excluded from being processed.
+*
+*  Fixed:
+*    - Code Formatting and Cleanup: Removal of useless code, unused variables
+*      and procedures.
+*    - Unreachable code elimination.
+*    - Fixed issues to make the program faster.
+*    - Fixed issues to make the program more reliable.
+*    - Bug fixes & improvements.
+*
+*  Notes:
+*    (1) Interest, dividens and capital gains.
+*    (2) Account tax-exempt status.
+*
+?HEADING "CBREFIS2 Carga de informacion monetaria para entrega al SAT"
+?ENV COMMON;RUNNAMED;COMPACT;MAIN CBREFIS2;SYMBOLS;INSPECT;SAVE ALL
+?SAVEABEND
+?SQL (RELEASE2,PAGES 800);SQLMEM EXT
+?SEARCH $SYSTEM.SYSTEM.CBL85UTL
+?SEARCH $SYSTEM.SYSTEM.CLULIB
+?SEARCH $DCYC01.EOPACOJA.CFFECHAS
+?SEARCH $DCYC01.INFROJA0.LTALLIB
+?SEARCH $SYSTEM.SYSTEM.COBOLLIB
+?SEARCH $DESA2.BADPROJA.CFCARINS
+?SEARCH $FISS02.BCFINOJA.CFREFCAL
+?OPTIMIZE 2;NOWARN
+
+ IDENTIFICATION DIVISION.
+ PROGRAM-ID. CBREFIS2.
+ AUTHOR.     Asistica - Gustavo Perez - www.asistica.com
+ DATE-WRITTEN. (10OCT03)
+ ENVIRONMENT DIVISION.
+ CONFIGURATION SECTION.
+
+ SPECIAL-NAMES.
+    class NUMERO is "0123456789. "
+    class OPERATIONAL-SIGN "+-"
+    class INSERTION-SYMBOL is "~"
+    DECIMAL-POINT is COMMA
+    FILE #TERM                         IS HOME-TERM
+    SWITCH-1 IS NOAUTOWORK  OFF STATUS IS START-TMF-TRANS
+    SWITCH-2 IS STATISTICS   ON STATUS IS DISPLAY-STATS
+    SWITCH-3 IS REPROCESS    ON STATUS IS REPROCESSABLE
+                            OFF STATUS IS UNREPROCESSABLE
+    SWITCH-4 IS NOTICES      ON STATUS IS DISPLAY-NOTICES
+    SWITCH-5 IS TRACE        ON STATUS IS TRACE-ON
+    SWITCH-6 IS loginfo      ON STATUS IS Log-cost.
+
+ INPUT-OUTPUT SECTION.
+ FILE-CONTROL.
+
+ DATA DIVISION.
+ FILE SECTION.
+
+ WORKING-STORAGE SECTION.
+
+*** Variables Generales
+
+ 01 WSS-VARIABLES.
+    02 WSS-DAYSBTWDATES.
+       03 WSS-DAYSBTWDATES-FECHA-INI.
+          04 WSS-DAYSBTWDATES-FECHA-INI-A4       PIC  9(04) VALUE ZERO.
+          04 WSS-DAYSBTWDATES-FECHA-INI-MM       PIC  9(02) VALUE ZERO.
+          04 WSS-DAYSBTWDATES-FECHA-INI-DD       PIC  9(02) VALUE ZERO.
+       03 WSS-DAYSBTWDATES-FECHA-INI-NUM REDEFINES WSS-DAYSBTWDATES-FECHA-INI
+                                                 PIC  9(08).
+       03 WSS-DAYSBTWDATES-FECHA-FIN.
+          04 WSS-DAYSBTWDATES-FECHA-FIN-A4       PIC  9(04) VALUE ZERO.
+          04 WSS-DAYSBTWDATES-FECHA-FIN-MM       PIC  9(02) VALUE ZERO.
+          04 WSS-DAYSBTWDATES-FECHA-FIN-DD       PIC  9(02) VALUE ZERO.
+       03 WSS-DAYSBTWDATES-FECHA-FIN-NUM REDEFINES WSS-DAYSBTWDATES-FECHA-FIN
+                                                 PIC  9(08).
+       03 WSS-DAYSBTWDATES-RESULTADO             PIC S9(04) VALUE ZERO COMP.
+
+    02 WSS-SIGHABIL.
+       03 WSS-SIGHABIL-FECHA-INI.
+          05 WSS-SIGHABIL-FECHA-INI-AAAA         PIC  9(04).
+          05 WSS-SIGHABIL-FECHA-INI-MM           PIC  9(02).
+          05 WSS-SIGHABIL-FECHA-INI-DD           PIC  9(02).
+       03 WSS-SIGHABIL-FECHA-INI-NUM
+          REDEFINES WSS-SIGHABIL-FECHA-INI       PIC  9(08).
+       03 WSS-SIGHABIL-FECHA-FIN.
+          05 WSS-SIGHABIL-FECHA-FIN-AAAA         PIC  9(04).
+          05 WSS-SIGHABIL-FECHA-FIN-MM           PIC  9(02).
+          05 WSS-SIGHABIL-FECHA-FIN-DD           PIC  9(02).
+       03 WSS-SIGHABIL-FECHA-FIN-NUM
+          REDEFINES WSS-SIGHABIL-FECHA-FIN       PIC  9(08).
+       03 WSS-SIGHABIL-DIAS-HAB                  PIC S9(04) COMP.
+
+    02 WSS-CHECKDATE.
+       03 WSS-CHECKDATE-FECH.
+          05 WSS-CHECKDATE-FECH-AAAA             PIC  9(04).
+          05 WSS-CHECKDATE-FECH-MM               PIC  9(02).
+          05 WSS-CHECKDATE-FECH-DD               PIC  9(02).
+       03 WSS-CHECKDATE-FECH-NUM REDEFINES WSS-CHECKDATE-FECH
+                                                 PIC  9(08).
+       03 WSS-CHECKDATE-RESULTADO                PIC  9(01).
+
+    02 WSS-ERR-MENSAJE-CONSOLA.
+       03 WSS-ERR-PROGRAMA                       PIC  X(08).
+       03 WSS-ERR-MENSAJE                        PIC  X(80).
+
+    02 WSS-FECHA-HORA.
+       03 WSS-FH-FECHA                           PIC  9(08).
+       03 FILLER REDEFINES WSS-FH-FECHA.
+          05 WSS-FH-AM.
+             07 WSS-FH-AA                        PIC  9(04).
+             07 WSS-FH-MM                        PIC  9(02).
+          05 WSS-FH-ANMS REDEFINES WSS-FH-AM     PIC  9(06).
+          05 WSS-FH-DD                           PIC  9(02).
+       03 FILLER REDEFINES WSS-FH-FECHA.
+          05 WSS-FH-ANO                          PIC  9(04).
+          05 WSS-FH-MD.
+             07 WSS-FH-MES                       PIC  9(02).
+             07 WSS-FH-DIA                       PIC  9(02).
+          05 WSS-FH-MEDI REDEFINES WSS-FH-MD     PIC  9(04).
+       03 WSS-FH-HORA                            PIC  9(08).
+       03 FILLER REDEFINES WSS-FH-HORA.
+          05 WSS-FH-MIN                          PIC  9(02).
+          05 WSS-FH-SSCC                         PIC  9(04).
+       03 FILLER REDEFINES WSS-FH-HORA.
+          05 WSS-FH-HRA.
+             07 WSS-FH-HH                        PIC  9(02).
+             07 WSS-FH-MI                        PIC  9(02).
+             07 WSS-FH-SS                        PIC  9(02).
+          05 WSS-FH-HR REDEFINES WSS-FH-HRA      PIC  9(06).
+          05 WSS-FH-CEN                          PIC  9(02).
+       03 FILLER                                 PIC  X(05).
+
+    02 WSS-PARAMETROS.
+       03 WSS-PRM-NOM                            PIC X(30).
+       03 WSS-PRM-NOM-LNG                        NATIVE-2.
+       03 WSS-PRM-VALOR                          PIC X(30).
+       03 WSS-PRM-RSL                            PIC S9(04).
+          88 WSS-PRM-SIN-VALOR                   VALUE -1.
+       03 PSS-FECHA-PROCESO                      PIC 9(8).
+       03 PSS-TRANS-COUNT                        PIC 9(8).
+       03 PSS-NUM-COPIA                          PIC 9(2).
+
+    02 WSS-CONTADORES.
+       03 WSS-TRANS-COUNT                        PIC S9(08).
+       03 WSS-TOT-REGS-SREFISPR                  PIC S9(08).
+       03 WSS-TOT-REGS-STRANSAC                  PIC S9(08).
+       03 WSS-TOT-REGS-SREFISTR                  PIC S9(08).
+
+    02 WSS-CVE-TIPO-TRANSACCION                  PIC X(04).
+       88 ADMO VALUES ARE "ADMO" "TARJ".
+       88 CONV VALUES ARE "EF80" "EF90".
+       88 DEPA VALUES ARE "DEPA".
+       88 EFEC VALUES ARE "EFEC".
+       88 EXCL VALUES ARE "MDAD" "GARA".
+       88 MCAP VALUES ARE "MCAP".
+       88 MDAD VALUES ARE "MDAD".
+       88 MDIN VALUES ARE "MDIN" "CUST" "MDSI".
+       88 PRVL VALUES ARE "PVAL".
+       88 SOIN VALUES ARE "SOIN".
+       88 VENT VALUES ARE "VENT" "DCOR".
+
+    02 WSS-BANDERAS.
+       03 WSS-ERROR                              PIC  X(01).
+          88 WSS-ERROR-SI                        VALUE "S".
+          88 WSS-ERROR-NO                        VALUE "N".
+       03 WSS-EOT-STRAPVAL                       PIC  X(01).
+          88 WSS-EOT-STRAPVAL-SI                 VALUE "S".
+          88 WSS-EOT-STRAPVAL-NO                 VALUE "N".
+       03 WSS-EOT-STRAMCAP                       PIC  X(01).
+          88 WSS-EOT-STRAMCAP-SI                 VALUE "S".
+          88 WSS-EOT-STRAMCAP-NO                 VALUE "N".
+       03 WSS-EOT-STRAMDIN                       PIC  X(01).
+          88 WSS-EOT-STRAMDIN-SI                 VALUE "S".
+          88 WSS-EOT-STRAMDIN-NO                 VALUE "N".
+       03 WSS-EOT-STRASOCI                       PIC  X(01).
+          88 WSS-EOT-STRASOCI-SI                 VALUE "S".
+          88 WSS-EOT-STRASOCI-NO                 VALUE "N".
+       03 WSS-EOT-STRACONV                       PIC  X(01).
+          88 WSS-EOT-STRACONV-SI                 VALUE "S".
+          88 WSS-EOT-STRACONV-NO                 VALUE "N".
+       03 WSS-EOT-STRADEPA                       PIC  X(01).
+          88 WSS-EOT-STRADEPA-SI                 VALUE "S".
+          88 WSS-EOT-STRADEPA-NO                 VALUE "N".
+       03 WSS-EOT-STRAVENT                       PIC  X(01).
+          88 WSS-EOT-STRAVENT-SI                 VALUE "S".
+          88 WSS-EOT-STRAVENT-NO                 VALUE "N".
+       03 WSS-EOT-SREFISRI                       PIC  X(01).
+          88 WSS-EOT-SREFISRI-SI                 VALUE "S".
+          88 WSS-EOT-SREFISRI-NO                 VALUE "N".
+       03 WSS-EOT-CUR-SREFISTR                   PIC  X(01).
+          88 WSS-EOT-CUR-SREFISTR-SI             VALUE "S".
+          88 WSS-EOT-CUR-SREFISTR-NO             VALUE "N".
+       03 WSS-EOT-CUR-SREFISPR                   PIC  X(01).
+          88 WSS-EOT-CUR-SREFISPR-SI             VALUE "S".
+          88 WSS-EOT-CUR-SREFISPR-NO             VALUE "N".
+       03 WSS-EOT-SREFISPR                       PIC  X(01).
+          88 WSS-EOT-SREFISPR-SI                 VALUE "S".
+          88 WSS-EOT-SREFISPR-NO                 VALUE "N".
+       03 WSS-EOT-CUR-STRANSAC                   PIC  X(01).
+          88 WSS-EOT-CUR-STRANSAC-SI             VALUE "S".
+          88 WSS-EOT-CUR-STRANSAC-NO             VALUE "N".
+       03 WSS-EOT-SHISPREC                       PIC  X(01).
+          88 WSS-EOT-SHISPREC-SI                 VALUE "S".
+          88 WSS-EOT-SHISPREC-NO                 VALUE "N".
+       03 WSS-EOT-STRANSAC                       PIC  X(01).
+          88 WSS-EOT-STRANSAC-SI                 VALUE "S".
+          88 WSS-EOT-STRANSAC-NO                 VALUE "N".
+       03 WSS-EOT-SEMISORA                       PIC  X(01).
+          88 WSS-EOT-SEMISORA-SI                 VALUE "S".
+          88 WSS-EOT-SEMISORA-NO                 VALUE "N".
+       03 WSS-EOT-SPRODOPE                       PIC  X(01).
+          88 WSS-EOT-SPRODOPE-SI                 VALUE "S".
+          88 WSS-EOT-SPRODOPE-NO                 VALUE "N".
+       03 WSS-EOT-SPRESTAM                       PIC  X(01).
+          88 WSS-EOT-SPRESTAM-SI                 VALUE "S".
+          88 WSS-EOT-SPRESTAM-NO                 VALUE "N".
+       03 WSS-EOT-SREFISTE                       PIC  X(01).
+          88 WSS-EOT-SREFISTE-SI                 VALUE "S".
+          88 WSS-EOT-SREFISTE-NO                 VALUE "N".
+       03 WSS-EOT-SHISPOSI                       PIC  X(01).
+          88 WSS-EOT-SHISPOSI-SI                 VALUE "S".
+          88 WSS-EOT-SHISPOSI-NO                 VALUE "N".
+    02 WSS-INDICADORES.
+       03 WSS-PRIMER-DD-HABIL-MM-ACT             PIC 9(08).
+       03 WSS-ULTIMO-DD-HABIL-MM-ACT             PIC 9(08).
+       03 WSS-ULTIMO-DD-HABIL-MM-ANT             PIC 9(08).
+       03 WSS-ULTIMO-DD-HABIL-AA-ANT             PIC 9(08).
+    02 LSS-CTO-TRATAMIENTO-IMPOSITIVO            PIC S9(4) COMP.
+       88 CTO-GRAVADO                            VALUE 1.
+       88 CTO-EXENTO                             VALUE 0.
+    02 LSS-PRO-TRATAMIENTO-IMPOSITIVO            PIC S9(4) COMP.
+       88 PRO-GRAVADO                            VALUE 1.
+       88 PRO-EXENTO                             VALUE 0.
+
+ 01 LSS-REFCAL.
+    02 LSS-NUM-HEADER                            PIC S9(04) COMP.
+    02 LSS-FECH-A4MM                             PIC  9(06) COMP.
+    02 LSS-NUM-CONTRATO                          PIC S9(09) COMP.
+    02 LSS-NUM-PRODUCTO                          PIC S9(09) COMP.
+    02 LSS-CVE-MERCADO                           PIC  X(04).
+       88 PROD-MCAP                              VALUES ARE "MCAP".
+    02 LSS-CVE-TIPO-SALDO                        PIC  X(04).
+       88 REPORTO                                VALUES ARE
+      "REPO".
+    02 LSS-CVE-TIPO-VALOR                        PIC  X(04).
+    02 FILLER REDEFINES LSS-CVE-TIPO-VALOR.
+       03 LSS-CVE-TIPO-VALOR-INICIAL             PIC  X(01).
+       88 WARRANTS VALUES IS "W".
+       03 FILLER                                 PIC  X(03).
+    02 LSS-NUMF-TRANSACCION                      PIC S9(09) COMP.
+    02 lss-NUMF-ORDEN                            PIC  9(09) COMP.
+    02 LSS-CVE-TIPO-TRANSACCION                  PIC  X(04).
+    02 LSS-CVE-OPER                              PIC  X(08).
+       88 PAGO-DE-INTERES                        VALUES ARE
+      "PAGAINTE" "INTEDEPP" "VTOCPARE".
+       88 VENCIMIENTO-REPORTO                    VALUES ARE
+      "VTOCPARE".
+       88 TIPO-IMPORTE-DIVIDENDO                 VALUES ARE
+      "DIVIDEPP" "DIVIDEPN".
+       88 PREMIO-PRVL                            VALUES ARE
+      "ENTEFECT" "PVPAPREM" "PVPAPREP".
+       88 TRN-GENERA-INT-DEVENGADOS              VALUES ARE
+       "VTANORMC" "CPANORMC".
+    02 LSS-NUMF-TRANS-GENERADORA                 PIC  9(09) COMP.
+    02 LSS-FECH-REGISTRO                         PIC  9(08) COMP.
+    02 LSS-FECH-APLICACION                       PIC  9(08) COMP.
+    02 LSS-IMPO-TRANSACCION                      PIC S9(16)V9(2) COMP.
+    02 LSS-TIT-TRANSACCION                       PIC S9(18) COMP.
+    02 LSS-PREC-TRANSACCION                      PIC S9(10)V9(8) COMP.
+    02 LSS-IMPO-PREMIO                           PIC S9(16)V9(2) COMP.
+    02 LSS-IMPO-NETO                             PIC S9(16)V9(2) COMP.
+    02 LSS-PLZO-DIAS                             PIC S9(06) COMP.
+    02 LSS-TASA-RENDIMIENTO                      PIC S9(4)V9(8) COMP.
+    02 LSS-CODN-CUS                              PIC S9(04) COMP.
+    02 LSS-CODN-EFE                              PIC S9(04) COMP.
+    02 LSS-CODN-TIPO-IMPORTE                     PIC S9(04) COMP.
+    02 LSS-CODN-MOVTO-EFECTIVO                   PIC S9(04) COMP.
+    02 LSS-CODN-TIPO-TRATAMIENTO                 PIC S9(04) COMP.
+       88 L88-CODN-TM-INTERES-GRAVADO            VALUE 1 THRU 3.
+       88 L88-CODN-TM-UTILIDAD-GRAVADA           VALUE 2 THRU 3.
+    02 LSS-CODN-TIPO-GANANCIA                    PIC S9(04) COMP.
+    02 LSS-BAND-ES-INSTRUM-CUPONADO              PIC  X(01).
+       88 L88-INSTRUM-CUPONADO                   VALUE "S".
+    02 LSS-CVE-UNIDAD-VALUADORA                  PIC  X(04).
+    02 LSS-PREG-NOMINAL                          PIC S9(10)V9(8) COMP.
+    02 LSS-BAND-ES-INSTRUM-UDIZADO               PIC  X(01).
+       88 L88-INSTRUM-UDIZADO                    VALUE "S".
+    02 LSS-IMPORTES-PRODUCTO.
+       03 LSS-IMPO-ENTRADAS                      PIC S9(16)V9(2) COMP.
+       03 LSS-IMPO-SALIDAS                       PIC S9(16)V9(2) COMP.
+       03 LSS-IMPO-INT-NOMINAL-GRAVADO           PIC S9(16)V9(2) COMP.
+       03 LSS-IMPO-INT-REAL-GRAVADO              PIC S9(16)V9(2) COMP.
+       03 LSS-IMPO-GAN-NOMINAL-GRAVADO           PIC S9(16)V9(2) COMP.
+       03 LSS-IMPO-GAN-REAL-GRAVADO              PIC S9(16)V9(2) COMP.
+       03 LSS-IMPO-INT-NOMINAL-EXENTO            PIC S9(16)V9(2) COMP.
+       03 LSS-IMPO-INT-REAL-EXENTO               PIC S9(16)V9(2) COMP.
+       03 LSS-IMPO-GAN-NOMINAL-EXENTO            PIC S9(16)V9(2) COMP.
+       03 LSS-IMPO-GAN-REAL-EXENTO               PIC S9(16)V9(2) COMP.
+       03 LSS-IMPO-DIVIDENDOS                    PIC S9(16)V9(2) COMP.
+       03 LSS-IMPO-COMISIONES-RV                 PIC S9(16)V9(2) COMP.
+       03 LSS-IMPO-COSTO-PROMEDIO                PIC S9(16)V9(2) COMP.
+       03 LSS-IMPO-COSTO-PROM-AJUSTADO           PIC S9(16)V9(2) COMP.
+       03 LSS-IMPO-RETENCION                     PIC S9(16)V9(2) COMP.
+    02 LSS-TIT-TEMPORAL                          PIC S9(18) COMP.
+    02 LSS-FECH-ULT-MOVTO                        PIC S9(8) COMP.
+    02 LSS-ULTIMO-DD-HABIL-AA-ANT                PIC 9(08).
+    02 LSS-TXT-MSG-ERROR                         PIC  X(78).
+
+ 01 WSS-FORMATOS.
+    02 WSS-FECHA                                 PIC 9999/99/99.
+    02 WSS-HORA.
+       03 WSS-HORA-HHMMSS.
+          04 WSS-HH                              PIC 99.
+          04 FILLER                              PIC X(01) VALUE ":".
+          04 WSS-MN                              PIC 99.
+          04 FILLER                              PIC X(01) VALUE ":".
+          04 WSS-SG                              PIC 99.
+       03 FILLER                                 PIC X(01) VALUE ".".
+       03 WSS-CN                                 PIC 99.
+    02 WSS-FECH-DEFAULT-FMT.
+       03 WSS-DF-YYYY                            PIC 9999.
+       03 FILLER                                 PIC X(01) VALUE "-".
+       03 WSS-DF-MM                              PIC 99.
+       03 FILLER                                 PIC X(01) VALUE "-".
+       03 WSS-DF-DD                              PIC 99.
+       03 FILLER                                 PIC X(01) VALUE ":".
+       03 WSS-DF-HH                              PIC 99.
+       03 FILLER                                 PIC X(01) VALUE ":".
+       03 WSS-DF-MN                              PIC 99.
+       03 FILLER                                 PIC X(01) VALUE ":".
+       03 WSS-DF-SG                              PIC 99.
+
+    02 DSS-REGS                                  PIC ZZZ.ZZZ.ZZ9.
+    02 DSS-NUMERIC                               PIC ZZZZZZZZZZZ9.
+    02 DSS-AV-ERROR                              PIC ----------9.
+    02 DSS-COUNT-READ                            PIC 999.
+    02 DSS-FECHA                                 PIC 9999/99/99.
+    02 WSS-IND-EDI                               NATIVE-2 VALUE ZERO.
+
+ 01 LSS-CAR-PARN-ENTRADA.
+    02 LSS-CAR-PARN-HEADER                       PIC 9(04) COMP.
+    02 LSS-CAR-VALOR-REFERENCIA                  PIC X(09).
+    02 LSS-CAR-CVE-CARACTERISTICA                PIC X(04).
+    02 LSS-CAR-NUMF-CARACTERISTICA               PIC 9(09) COMP.
+
+ 01 LSS-CAR-PARN-SALIDA.
+    02 LSS-CAR-IND-VAL                           NATIVE-2.
+    02 LSS-CAR-CODX-VALORES-TBL.
+       03 LSS-CAR-CODX-VALORES OCCURS 1 TO 100 TIMES
+          DEPENDING ON LSS-CAR-IND-VAL.
+          04 LSS-CAR-VAL-NUMF-CARAC              PIC 9(9) COMP.
+          04 LSS-CAR-VAL-CODX-VALOR              PIC X(20).
+
+ 01 LSS-CAR-PARX-ERROR.
+    02 LSS-CAR-PARX-MSG-ERROR-FUNC               PIC X(78).
+    02 LSS-CAR-PARX-FUNCION                      PIC 9(04) COMP.
+    02 LSS-CAR-SQL-ERROR                         PIC S9(04) COMP.
+
+ 01 LSS-ADQ-PARN-ENT-SAL.
+    02 LSS-ADQ-PARN-HEADER                       PIC 9(04) COMP.
+    02 LSS-ADQ-VALOR-REFERENCIA                  PIC X(09).
+    02 LSS-ADQ-CVE-TIPO-PERSONA                  PIC X(4).
+    02 LSS-ADQ-CVE-PERSONALIDAD-JURID            PIC X(4).
+
+ 01 LSS-ADQ-PARX-ERROR.
+    02 LSS-ADQ-PARX-MSG-ERROR-FUNC               PIC X(78).
+    02 LSS-ADQ-PARX-FUNCION                      PIC 9(04) COMP.
+    02 LSS-ADQ-SQL-ERROR                         PIC S9(04) COMP.
+
+ 01 WSS-IND                                      NATIVE-2 VALUE ZERO.
+
+ COPY w-cc-params         OF $DESA15.ASITECTA.COMPCOB.
+ COPY ESS-VARS-STND-000   OF $DESA12.SCOGLCPA.C85DEFPG.
+ COPY ESS-VARS-STND-010   OF $DESA12.SCOGLCPA.C85DEFPG.
+ COPY ESS-VARS-STND-020   OF $DESA12.SCOGLCPA.C85DEFPG.
+ COPY WSS-VARS-STND-000   OF $DESA12.SCOGLCPA.C85DEFPG.
+ COPY FILESYSTEM-CONSTANT OF $SYSTEM.ZSYSDEFS.ZSYSCOB.
+
+ EXTENDED-STORAGE SECTION.
+ EXEC SQL INCLUDE SQLCA                          END-EXEC.
+ EXEC SQL INCLUDE SQLSA                          END-EXEC.
+ EXEC SQL BEGIN DECLARE SECTION                  END-EXEC.
+ EXEC SQL INVOKE =SREFISPR AS SREFISPR-REG       END-EXEC.
+ EXEC SQL INVOKE =SREFISRI AS SREFISRI-REG       END-EXEC.
+ EXEC SQL INVOKE =SREFISTE AS SREFISTE-REG       END-EXEC.
+ EXEC SQL INVOKE =SREFISTR AS SREFISTR-REG       END-EXEC.
+ EXEC SQL INVOKE =SCARXCTO AS SCARXCTO-REG       END-EXEC.
+ EXEC SQL INVOKE =SCLIENTE AS SCLIENTE-REG       END-EXEC.
+ EXEC SQL INVOKE =SCONTRAT AS SCONTRAT-REG       END-EXEC.
+ EXEC SQL INVOKE =SCTRSIS  AS SCTRSIS-REG        END-EXEC.
+ EXEC SQL INVOKE =SEMISORA AS SEMISORA-REG       END-EXEC.
+ EXEC SQL INVOKE =SHISPREC AS SHISPREC-REG       END-EXEC.
+ EXEC SQL INVOKE =SHISPOSI AS SHISPOSI-REG       END-EXEC.
+ EXEC SQL INVOKE =SOPDISVE AS SOPDISVE-REG       END-EXEC.
+ EXEC SQL INVOKE =SPRESTAM AS SPRESTAM-REG       END-EXEC.
+ EXEC SQL INVOKE =SPRODOPE AS SPRODOPE-REG       END-EXEC.
+ EXEC SQL INVOKE =STRACONV AS STRACONV-REG       END-EXEC.
+ EXEC SQL INVOKE =STRADEPA AS STRADEPA-REG       END-EXEC.
+ EXEC SQL INVOKE =STRAMCAP AS STRAMCAP-REG       END-EXEC.
+ EXEC SQL INVOKE =STRAMDIN AS STRAMDIN-REG       END-EXEC.
+ EXEC SQL INVOKE =STRANSAC AS STRANSAC-REG       END-EXEC.
+ EXEC SQL INVOKE =STRAPVAL AS STRAPVAL-REG       END-EXEC.
+ EXEC SQL INVOKE =STRASOCI AS STRASOCI-REG       END-EXEC.
+ EXEC SQL INVOKE =STRAVENT AS STRAVENT-REG       END-EXEC.
+
+ 01 H-VARIABLES-HOST.
+    02 H-TRAN-CVE-PARTICION                      PIC X(01).
+    02 H-RFPR-NUM-PRODUCTO-ANT                   PIC 9(09) COMP.
+    02 H-RFPR-NUM-CONTRATO-ANT                   PIC 9(09) COMP.
+    02 H-RFAC-NUM-CONTRATO                       PIC 9(09) COMP.
+    02 H-TRAN-NUMF-TRANSACCION                   PIC 9(18) COMP.
+    02 H-FECH-A4MMDD-INI                         PIC 9(08) COMP.
+    02 H-FECH-A4MMDD-FIN                         PIC 9(08) COMP.
+    02 H-TRAN-ADICIONALES.
+       03 H-TIT-TRANSACCION                      PIC S9(18) COMP.
+       03 H-PREC-TRANSACCION                     PIC S9(7)V9(8) COMP.
+       03 H-PLZO-DIAS                            PIC S9(6) COMP.
+       03 H-TASA-RENDIMIENTO                     PIC S9(4)V9(8) COMP.
+       03 H-IMPO-PREMIO                          PIC S9(16)V9(2) COMP.
+       03 H-IMPO-NETO                            PIC S9(16)V9(2) COMP.
+       03 H-INT-DEVENGADOS                       PIC S9(16)V9(2) COMP.
+    02 HSS-LIMITE-INF                            PIC X(22).
+    02 FILLER REDEFINES HSS-LIMITE-INF.
+       03 HSS-LIM-INF-NUM-CONTRATO               PIC 9(09).
+       03 HSS-LIM-INF-NUM-PRODUCTO               PIC 9(09).
+       03 HSS-LIM-INF-CVE-TIPO-SALDO             PIC X(04).
+    02 HSS-LIMITE-SUP                            PIC X(22).
+    02 FILLER REDEFINES HSS-LIMITE-SUP.
+       03 HSS-LIM-SUP-NUM-CONTRATO               PIC 9(09).
+       03 HSS-LIM-SUP-NUM-PRODUCTO               PIC 9(09).
+       03 HSS-LIM-SUP-CVE-TIPO-SALDO             PIC X(04).
+    02 H-CVE-IMPUESTO                            PIC X(08).
+
+ EXEC SQL END DECLARE SECTION                    END-EXEC.
+ EXEC SQL CONTROL QUERY INTERACTIVE ACCESS ON    END-EXEC.
+ EXEC SQL CONTROL TABLE =SREFISPR TABLELOCK OFF  END-EXEC.
+ EXEC SQL CONTROL TABLE =SREFISPR TIMEOUT -1     END-EXEC.
+ EXEC SQL CONTROL TABLE =SREFISPR WAIT IF LOCKED END-EXEC.
+ EXEC SQL CONTROL TABLE =SREFISTR TABLELOCK OFF  END-EXEC.
+ EXEC SQL CONTROL TABLE =SREFISTR TIMEOUT -1     END-EXEC.
+ EXEC SQL CONTROL TABLE =SREFISTR WAIT IF LOCKED END-EXEC.
+
+ EXEC SQL DECLARE CUR_UPD_SREFISPR CURSOR FOR
+      SELECT
+             RFPR_ANIO_MES
+            ,RFPR_NUM_CONTRATO
+            ,RFPR_NUM_PRODUCTO
+            ,RFPR_CVE_TIPO_SALDO
+       FROM =SREFISPR
+       WHERE RFPR_ANIO_MES           = :RFPR-ANIO-MES
+         AND ((RFPR_NUM_CONTRATO    >= :HSS-LIM-INF-NUM-CONTRATO
+           AND RFPR_NUM_PRODUCTO    >= :HSS-LIM-INF-NUM-PRODUCTO
+           AND RFPR_CVE_TIPO_SALDO  >= :HSS-LIM-INF-CVE-TIPO-SALDO)
+          OR  (RFPR_NUM_CONTRATO    >  :HSS-LIM-INF-NUM-CONTRATO
+           AND RFPR_NUM_PRODUCTO    >= 0
+           AND RFPR_CVE_TIPO_SALDO  >= ""))
+         AND (RFPR_NUM_CONTRATO     <  :HSS-LIM-SUP-NUM-CONTRATO)
+     for browse access
+ END-EXEC.
+
+ EXEC SQL DECLARE CUR_SREFISPR CURSOR FOR
+      SELECT RFPR_NUM_CONTRATO
+            ,RFPR_NUM_PRODUCTO
+            ,RFPR_CVE_TIPO_SALDO
+       FROM =SREFISPR
+       WHERE RFPR_ANIO_MES           = :RFPR-ANIO-MES
+         AND ((RFPR_NUM_CONTRATO    >= :HSS-LIM-INF-NUM-CONTRATO
+           AND RFPR_NUM_PRODUCTO    >= :HSS-LIM-INF-NUM-PRODUCTO
+           AND RFPR_CVE_TIPO_SALDO  >= :HSS-LIM-INF-CVE-TIPO-SALDO)
+          OR  (RFPR_NUM_CONTRATO    >  :HSS-LIM-INF-NUM-CONTRATO
+            AND RFPR_NUM_PRODUCTO   >= 0
+            AND RFPR_CVE_TIPO_SALDO >= ""))
+         AND (RFPR_NUM_CONTRATO     <  :HSS-LIM-SUP-NUM-CONTRATO)
+         FOR BROWSE ACCESS
+ END-EXEC.
+
+ EXEC SQL DECLARE CUR_STRANSAC CURSOR FOR
+      SELECT TRAN_NUMF_TRANSACCION
+       FROM =STRANSAC
+            LEFT JOIN =SREFISTE
+                  ON (TRAN_CVE_TIPO_TRANSACCION,TRAN_CVE_OPER)
+                    =(RFTE_CVE_TIPO_TRANSACCION,RFTE_CVE_OPER)
+       WHERE TRAN_CODX_STATUS="ACTI"
+         AND TRAN_NUM_CONTRATO=:TRAN-NUM-CONTRATO
+         AND TRAN_NUM_PRODUCTO=:TRAN-NUM-PRODUCTO
+         AND TRAN_FECH_APLICACION BETWEEN :H-FECH-A4MMDD-INI
+                                     AND  :H-FECH-A4MMDD-FIN
+         AND TRAN_NUMF_TRANSACCION > :H-TRAN-NUMF-TRANSACCION
+         AND TRAN_CVE_TIPO_TRANSACCION NOT IN ("GARA","MDAD","SOIN")
+         AND RFTE_CVE_TIPO_TRANSACCION IS NULL
+         ORDER BY TRAN_FECH_APLICACION, TRAN_NUMF_TRANSACCION
+         FOR BROWSE ACCESS
+ END-EXEC.
+
+ EXEC SQL DECLARE CUR_DEL_SREFISTR CURSOR FOR
+      SELECT RFTR_NUMF_TRANSACCION
+       FROM =SREFISTR
+       WHERE RFTR_ANIO_MES         = :RFTR-ANIO-MES
+      AND (( RFTR_NUM_CONTRATO    >= :HSS-LIM-INF-NUM-CONTRATO
+         AND RFTR_NUM_PRODUCTO    >= :HSS-LIM-INF-NUM-PRODUCTO
+         AND RFTR_CVE_TIPO_SALDO  >= :HSS-LIM-INF-CVE-TIPO-SALDO)
+        AND (RFTR_NUM_CONTRATO    <  :HSS-LIM-SUP-NUM-CONTRATO))
+          FOR BROWSE ACCESS
+ END-EXEC.
+
+ EXEC SQL CONTROL QUERY INTERACTIVE ACCESS OFF END-EXEC.
+
+ PROCEDURE DIVISION.
+
+ 0000-PRINCIPAL.
+      PERFORM 0010-INICIO
+      IF PSS-FECHA-PROCESO < WSS-ULTIMO-DD-HABIL-MM-ACT
+         INITIALIZE WSS-ERR-MENSAJE
+         STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                SPACE "Ejecutable solo a partir del ultimo dia habil del mes"
+                DELIMITED BY SIZE INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+      ELSE
+         MOVE PSS-FECHA-PROCESO TO RFRI-FECH-PROCESO
+         MOVE "CBREFIS1"        TO RFRI-NOMB-PROGRAMA
+         MOVE 0                 TO RFRI-NUM-COPIA
+         PERFORM 9060-SELECT-SREFISRI
+         IF RFRI-NUM-COPIA > 0
+            INITIALIZE WSS-ERR-MENSAJE
+            STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                   SPACE "Ejecutable solo si ya termino el programa: "
+                   RFRI-NOMB-PROGRAMA
+                   DELIMITED BY SIZE INTO WSS-ERR-MENSAJE
+            DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         ELSE
+            MOVE PSS-FECHA-PROCESO TO RFRI-FECH-PROCESO
+            MOVE WSS-ERR-PROGRAMA  TO RFRI-NOMB-PROGRAMA
+            MOVE PSS-NUM-COPIA     TO RFRI-NUM-COPIA
+            PERFORM 9010-SELECT-SREFISRI
+            IF UNREPROCESSABLE AND RFRI-BAND-ESTA-TERMINADO = "S"
+               INITIALIZE WSS-ERR-MENSAJE
+               STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                      SPACE "Ya fue ejecutado y termino bien"
+                      DELIMITED BY SIZE INTO WSS-ERR-MENSAJE
+               DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+            ELSE
+               PERFORM 0020-PROCESO
+               PERFORM 0030-PRESENTA-CIFRAS-CONTROL.
+      PERFORM 0040-FIN
+      ENTER TAL "PROCESS_STOP_".
+
+ 0010-INICIO.
+      INITIALIZE STRANSAC-REG SOPDISVE-REG SHISPOSI-REG SEMISORA-REG
+                 STRAMDIN-REG STRACONV-REG SHISPREC-REG STRASOCI-REG
+                 SREFISPR-REG SREFISTR-REG SREFISRI-REG STRAPVAL-REG
+                 STRADEPA-REG STRAMCAP-REG STRAVENT-REG SPRESTAM-REG
+                 SCTRSIS-REG WSS-VARIABLES H-VARIABLES-HOST LSS-REFCAL
+                 LSS-CODN-TIPO-TRATAMIENTO
+      PERFORM 0011-OBTEN-PROGRAM-ID
+      PERFORM 8000-CALL-TGETMYID
+      PERFORM 0015-OBTEN-COPIA
+      STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+             SPACE "Inicio de proceso. Copia: " PSS-NUM-COPIA
+             DELIMITED BY SIZE INTO ESS-MSG-OPER-L3-TXT-ERROR
+      MOVE "TransCount" to ESS-MSG-OPER-L3-TXT-ERROR (51:)
+      MOVE PSS-TRANS-COUNT to ESS-MSG-OPER-L3-TXT-ERROR (63:)
+      STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+      SPACE "Carga de informacion monetaria (calculos) para entrega al SAT"
+             DELIMITED BY SIZE
+             INTO ESS-MSG-OPER-L4-TXT-ERROR
+      SET ES88-FLAG-TIPO-ERR-AVISO  TO  TRUE
+      PERFORM 8000000-MENSAJES-OPERADOR
+      PERFORM 0012-OBTEN-PARAMETROS
+      PERFORM 7000-OBTEN-FECHA-HORA
+      PERFORM 0015-OBTEN-INDICADORES.
+
+ 0011-OBTEN-PROGRAM-ID.
+      EXEC SQL COMMIT WORK END-EXEC
+      MOVE PROCEDURE-ID TO WSS-ERR-PROGRAMA
+      IF PROCEDURE-ID = SPACES
+         MOVE "CBREFIS2" TO WSS-ERR-PROGRAMA.
+
+ 0012-OBTEN-PARAMETROS.
+      PERFORM 0013-OBTEN-FECHA-PROCESO
+      PERFORM 0014-OBTEN-TRANS-COUNT
+      PERFORM 0015-OBTEN-LIMITE-INF
+      PERFORM 0015-OBTEN-LIMITE-SUP
+      IF DISPLAY-NOTICES
+         INITIALIZE WSS-ERR-MENSAJE
+         STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                SPACE
+               "Transacciones logicas:"
+                SPACE
+                PSS-TRANS-COUNT
+                DELIMITED BY SIZE INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         INITIALIZE WSS-ERR-MENSAJE
+         STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                SPACE
+               "Fecha de proceso:"
+                SPACE
+                WSS-FECHA
+                DELIMITED BY SIZE INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM.
+         INITIALIZE WSS-ERR-MENSAJE
+         STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                SPACE
+               "Limite inferior:"
+                SPACE
+                HSS-LIMITE-INF
+                DELIMITED BY SIZE INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM.
+         INITIALIZE WSS-ERR-MENSAJE
+         STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                SPACE
+               "Limite superior:"
+                SPACE
+                HSS-LIMITE-SUP
+                DELIMITED BY SIZE INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM.
+
+ 0013-OBTEN-FECHA-PROCESO.
+      INITIALIZE WSS-CHECKDATE
+      MOVE "FECHA" TO WSS-PRM-NOM
+      INSPECT WSS-PRM-NOM TALLYING WSS-PRM-NOM-LNG
+          FOR CHARACTERS BEFORE SPACE
+      PERFORM 7010-OBTEN-PARAMETRO
+      MOVE WSS-PRM-VALOR TO WSS-CHECKDATE-FECH
+      IF WSS-PRM-SIN-VALOR
+         MOVE "SIBU" TO CTSI-CVE-SISTEMA
+         PERFORM 9000-SELECT-SCTRSIS
+         MOVE CTSI-FECH-SISTEMA TO WSS-CHECKDATE-FECH-NUM.
+      PERFORM 8010-CALL-CHECKDATE
+      MOVE WSS-CHECKDATE-FECH-NUM TO PSS-FECHA-PROCESO WSS-FECHA
+      IF WSS-CHECKDATE-RESULTADO > ZERO
+         INITIALIZE WSS-ERR-MENSAJE
+         STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                SPACE "Valor Fecha incorrecto:"
+                SPACE WSS-CHECKDATE-FECH
+                DELIMITED BY SIZE INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED, 1.
+
+ 0014-OBTEN-TRANS-COUNT.
+      MOVE "TRANS-COUNT" TO WSS-PRM-NOM
+      INSPECT WSS-PRM-NOM TALLYING WSS-PRM-NOM-LNG
+          FOR CHARACTERS BEFORE SPACE
+      PERFORM 7010-OBTEN-PARAMETRO
+      IF WSS-PRM-SIN-VALOR
+         MOVE 300 TO PSS-TRANS-COUNT
+      ELSE
+         IF WSS-PRM-VALOR IS NUMERO
+            MOVE FUNCTION NUMVAL(WSS-PRM-VALOR)
+              TO PSS-TRANS-COUNT
+         ELSE
+            INITIALIZE WSS-ERR-MENSAJE
+            STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                   SPACE "Param TRANS-COUNT incorrecto:"
+                   SPACE WSS-PRM-VALOR
+                   DELIMITED BY SIZE INTO WSS-ERR-MENSAJE
+            DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+            ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED, 1.
+
+ 0015-OBTEN-LIMITE-INF.
+      MOVE "LIMITE-INF" TO WSS-PRM-NOM
+      INSPECT WSS-PRM-NOM TALLYING WSS-PRM-NOM-LNG
+          FOR CHARACTERS BEFORE SPACE
+      PERFORM 7010-OBTEN-PARAMETRO
+      MOVE WSS-PRM-VALOR TO HSS-LIMITE-INF
+      IF WSS-PRM-SIN-VALOR
+         INITIALIZE WSS-ERR-MENSAJE
+         STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                SPACE "Param LIMITE-INF incorrecto o nulo:"
+                SPACE WSS-PRM-VALOR
+                DELIMITED BY SIZE INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED, 1.
+
+ 0015-OBTEN-LIMITE-SUP.
+      MOVE "LIMITE-SUP" TO WSS-PRM-NOM
+      INSPECT WSS-PRM-NOM TALLYING WSS-PRM-NOM-LNG
+          FOR CHARACTERS BEFORE SPACE
+      PERFORM 7010-OBTEN-PARAMETRO
+      MOVE WSS-PRM-VALOR TO HSS-LIMITE-SUP
+      IF WSS-PRM-SIN-VALOR
+         INITIALIZE WSS-ERR-MENSAJE
+         STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                SPACE "Param LIMITE-SUP incorrecto o nulo:"
+                SPACE WSS-PRM-VALOR
+                DELIMITED BY SIZE INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED, 1.
+
+ 0015-OBTEN-COPIA.
+      MOVE "COPIA" TO WSS-PRM-NOM
+      INSPECT WSS-PRM-NOM TALLYING WSS-PRM-NOM-LNG
+          FOR CHARACTERS BEFORE SPACE
+      PERFORM 7010-OBTEN-PARAMETRO
+      IF WSS-PRM-SIN-VALOR
+         INITIALIZE WSS-ERR-MENSAJE
+         STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                SPACE "Param COPIA incorrecto o nulo:"
+                SPACE WSS-PRM-VALOR
+                DELIMITED BY SIZE INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED, 1
+      ELSE
+         IF WSS-PRM-VALOR IS NUMERO
+            MOVE FUNCTION NUMVAL(WSS-PRM-VALOR)
+              TO PSS-NUM-COPIA
+         ELSE
+            INITIALIZE WSS-ERR-MENSAJE
+            STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                   SPACE "Param COPIA incorrecto:"
+                   SPACE WSS-PRM-VALOR
+                   DELIMITED BY SIZE INTO WSS-ERR-MENSAJE
+            DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+            ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED, 1.
+
+ 0015-OBTEN-INDICADORES.
+      INITIALIZE WSS-SIGHABIL
+      MOVE PSS-FECHA-PROCESO TO WSS-SIGHABIL-FECHA-INI
+
+      MOVE 1 TO WSS-SIGHABIL-FECHA-INI-DD
+      MOVE -1 TO WSS-SIGHABIL-DIAS-HAB
+      PERFORM 8020-CALL-SIGHABIL
+      MOVE WSS-SIGHABIL-FECHA-FIN TO WSS-ULTIMO-DD-HABIL-MM-ANT
+      IF WSS-SIGHABIL-FECHA-FIN-DD = 0
+         INITIALIZE WSS-ERR-MENSAJE
+         MOVE PSS-FECHA-PROCESO TO WSS-FECHA
+         STRING "<<" WSS-ERR-PROGRAMA ">>" DELIMITED BY SPACE
+                SPACE "Error al obtener ultimo dia habil del mes previo :"
+                SPACE WSS-FECHA
+                DELIMITED BY SIZE INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED, 1.
+
+      MOVE 1 TO WSS-SIGHABIL-DIAS-HAB
+      MOVE WSS-ULTIMO-DD-HABIL-MM-ANT TO WSS-SIGHABIL-FECHA-INI
+      PERFORM 8020-CALL-SIGHABIL
+      MOVE WSS-SIGHABIL-FECHA-FIN TO WSS-PRIMER-DD-HABIL-MM-ACT
+      IF WSS-SIGHABIL-FECHA-FIN-DD = 0
+         INITIALIZE WSS-ERR-MENSAJE
+         MOVE PSS-FECHA-PROCESO TO WSS-FECHA
+         STRING "<<" WSS-ERR-PROGRAMA ">>" DELIMITED BY SPACE
+                SPACE "Error al obtener primer dia habil del mes :"
+                SPACE WSS-FECHA
+                DELIMITED BY SIZE INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED, 1.
+
+      MOVE -1 TO WSS-SIGHABIL-DIAS-HAB
+      ADD 1 TO WSS-SIGHABIL-FECHA-FIN-MM
+      IF WSS-SIGHABIL-FECHA-FIN-MM > 12
+         ADD 1 TO WSS-SIGHABIL-FECHA-FIN-AAAA
+         MOVE 1 TO WSS-SIGHABIL-FECHA-FIN-MM.
+
+      MOVE WSS-SIGHABIL-FECHA-FIN TO WSS-SIGHABIL-FECHA-INI
+      MOVE 1                      TO WSS-SIGHABIL-FECHA-INI-DD
+      PERFORM 8020-CALL-SIGHABIL
+      MOVE WSS-SIGHABIL-FECHA-FIN TO WSS-ULTIMO-DD-HABIL-MM-ACT
+      IF WSS-SIGHABIL-FECHA-FIN-DD = 0
+         INITIALIZE WSS-ERR-MENSAJE
+         MOVE PSS-FECHA-PROCESO TO WSS-FECHA
+         STRING "<<" WSS-ERR-PROGRAMA ">>" DELIMITED BY SPACE
+                SPACE "Error al obtener ultimo dia habil del mes :"
+                SPACE WSS-FECHA
+                DELIMITED BY SIZE INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED, 1.
+
+      INITIALIZE WSS-SIGHABIL
+      MOVE PSS-FECHA-PROCESO TO WSS-SIGHABIL-FECHA-INI
+      MOVE 1 TO WSS-SIGHABIL-FECHA-INI-MM
+                WSS-SIGHABIL-FECHA-INI-DD
+      MOVE -1 TO WSS-SIGHABIL-DIAS-HAB
+      PERFORM 8020-CALL-SIGHABIL
+      MOVE WSS-SIGHABIL-FECHA-FIN TO WSS-ULTIMO-DD-HABIL-AA-ANT
+      IF WSS-SIGHABIL-FECHA-FIN-DD = 0
+         INITIALIZE WSS-ERR-MENSAJE
+         MOVE PSS-FECHA-PROCESO TO WSS-FECHA
+         STRING "<<" WSS-ERR-PROGRAMA ">>" DELIMITED BY SPACE
+                SPACE "Error al obtener ultimo dia habil del anno previo :"
+                SPACE WSS-FECHA
+                DELIMITED BY SIZE INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED, 1.
+
+ 0020-PROCESO.
+      if NOT Log-cost display "SE REGISTARA EN SREFISTC!!!! *** "
+                   UPON HOME-TERM.
+      IF START-TMF-TRANS
+         EXEC SQL BEGIN WORK END-EXEC
+      END-IF
+      IF RFRI-BAND-ESTA-TERMINADO = "S" OR = SPACES
+*        PERFORM 0100-LIMPIA-BD-REFIS
+         INITIALIZE RFRI-TOT-REGISTROS-1 RFRI-TOT-REGISTROS-2
+                    RFRI-TOT-REGISTROS-3 RFRI-TOT-REGISTROS-4
+                    RFRI-TOT-REGISTROS-5 RFRI-TOT-REGISTROS-6
+                    RFRI-ULT-REGISTRO-1 RFRI-ULT-REGISTRO-2
+                    RFRI-ULT-REGISTRO-3 RFRI-ULT-REGISTRO-4
+                    RFRI-ULT-REGISTRO-5.
+
+         PERFORM 7000-OBTEN-FECHA-HORA
+         MOVE WSS-FECH-DEFAULT-FMT TO RFRI-FECH-INI-EJECUCION
+         IF RFRI-ULT-REGISTRO-1 IS NOT NUMERO OR
+            RFRI-ULT-REGISTRO-1 = SPACES
+            MOVE ZERO TO RFRI-ULT-REGISTRO-1.
+         IF RFRI-ULT-REGISTRO-2 IS NOT NUMERO OR
+            RFRI-ULT-REGISTRO-2 = SPACES
+            MOVE ZERO TO RFRI-ULT-REGISTRO-2.
+         IF RFRI-ULT-REGISTRO-4 IS NOT NUMERO OR
+            RFRI-ULT-REGISTRO-4 = SPACES
+            MOVE ZERO TO RFRI-ULT-REGISTRO-4.
+         PERFORM 9030-INSERT-SREFISRI
+         IF START-TMF-TRANS
+            EXEC SQL COMMIT WORK END-EXEC
+         END-IF.
+
+      MOVE PSS-FECHA-PROCESO (1:6)               TO RFPR-ANIO-MES
+      MOVE FUNCTION NUMVAL (RFRI-ULT-REGISTRO-1) TO RFPR-NUM-CONTRATO
+      MOVE FUNCTION NUMVAL (RFRI-ULT-REGISTRO-2) TO RFPR-NUM-PRODUCTO
+      MOVE RFRI-ULT-REGISTRO-3                   TO RFPR-CVE-TIPO-SALDO
+      MOVE FUNCTION NUMVAL (RFRI-ULT-REGISTRO-4) TO H-TRAN-NUMF-TRANSACCION
+
+      IF RFPR-NUM-CONTRATO > HSS-LIM-INF-NUM-CONTRATO
+         MOVE RFPR-NUM-CONTRATO TO HSS-LIM-INF-NUM-CONTRATO.
+      IF RFPR-NUM-PRODUCTO > HSS-LIM-INF-NUM-PRODUCTO
+         MOVE RFPR-NUM-PRODUCTO TO HSS-LIM-INF-NUM-PRODUCTO.
+      IF RFPR-CVE-TIPO-SALDO > HSS-LIM-INF-CVE-TIPO-SALDO
+         MOVE RFPR-CVE-TIPO-SALDO TO HSS-LIM-INF-CVE-TIPO-SALDO.
+
+      IF START-TMF-TRANS
+         INITIALIZE WSS-TRANS-COUNT
+         EXEC SQL BEGIN WORK
+      END-EXEC.
+
+      IF RFRI-ULT-REGISTRO-1 > ZERO
+         SUBTRACT 1 FROM WSS-TOT-REGS-SREFISPR.
+
+      INITIALIZE STRANSAC-REG SOPDISVE-REG SHISPOSI-REG SEMISORA-REG
+                 STRAMDIN-REG STRACONV-REG STRASOCI-REG STRADEPA-REG
+                 STRAMCAP-REG STRAVENT-REG SPRESTAM-REG STRAPVAL-REG
+                 LSS-CODN-TIPO-TRATAMIENTO
+
+      EXEC SQL OPEN CUR_SREFISPR END-EXEC
+        PERFORM 9090-FETCH-SREFISPR
+        IF WSS-EOT-CUR-SREFISPR-SI
+           INITIALIZE WSS-ERR-MENSAJE
+           STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                  SPACE "No existe informacion en =SREFISPR, lapso:"
+                  SPACE PSS-FECHA-PROCESO (1:6)
+                  DELIMITED BY SIZE INTO WSS-ERR-MENSAJE
+           DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+        ELSE
+           PERFORM 0200-CICLO-SREFISPR UNTIL WSS-EOT-CUR-SREFISPR-SI.
+      EXEC SQL CLOSE CUR_SREFISPR END-EXEC
+
+      MOVE "S" TO RFRI-BAND-ESTA-TERMINADO
+      PERFORM 7020-GRABA-REINICIO
+
+      IF START-TMF-TRANS
+         INITIALIZE WSS-TRANS-COUNT
+         EXEC SQL COMMIT WORK END-EXEC.
+
+  0030-PRESENTA-CIFRAS-CONTROL.
+       PERFORM 9010-SELECT-SREFISRI
+       MOVE RFRI-TOT-REGISTROS-1 TO WSS-TOT-REGS-SREFISPR
+       MOVE RFRI-TOT-REGISTROS-2 TO WSS-TOT-REGS-STRANSAC
+       MOVE RFRI-TOT-REGISTROS-3 TO WSS-TOT-REGS-SREFISTR
+       STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+              SPACE "Leidos SREFISPR: "
+              WSS-TOT-REGS-SREFISPR
+              SPACE "Copia: " PSS-NUM-COPIA
+              DELIMITED BY SIZE
+              INTO ESS-MSG-OPER-L3-TXT-ERROR
+       STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+              SPACE "Leidos STRANSAC: "
+              WSS-TOT-REGS-STRANSAC
+              SPACE "Escritos SREFISTR: "
+              WSS-TOT-REGS-SREFISTR
+              DELIMITED BY SIZE INTO ESS-MSG-OPER-L4-TXT-ERROR
+       SET ES88-FLAG-TIPO-ERR-AVISO TO TRUE
+       PERFORM 8000000-MENSAJES-OPERADOR.
+
+ 0040-FIN.
+      SET ES88-FLAG-TIPO-ERR-AVISO TO TRUE.
+      STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+             SPACE "Fin de proceso, Fecha de ejecucion: " WSS-FECHA
+             SPACE "Copia: " PSS-NUM-COPIA
+             DELIMITED BY SIZE
+             INTO ESS-MSG-OPER-L4-TXT-ERROR
+      SET ES88-FLAG-TIPO-ERR-AVISO TO TRUE
+      PERFORM 8000000-MENSAJES-OPERADOR.
+
+ 0100-LIMPIA-BD-REFIS.
+      IF START-TMF-TRANS
+         INITIALIZE WSS-TRANS-COUNT
+         EXEC SQL BEGIN WORK END-EXEC.
+
+      MOVE PSS-FECHA-PROCESO (1:6)
+        TO RFTR-ANIO-MES RFPR-ANIO-MES
+
+      EXEC SQL OPEN CUR_UPD_SREFISPR END-EXEC
+        PERFORM 9270-FETCH-UPD-SREFISPR
+        IF WSS-EOT-CUR-SREFISPR-NO
+           PERFORM UNTIL WSS-EOT-CUR-SREFISPR-SI
+               ADD 1 TO WSS-TRANS-COUNT
+               PERFORM 9250-UPDATE-SREFISPR
+               IF WSS-TRANS-COUNT = PSS-TRANS-COUNT
+                  IF START-TMF-TRANS
+                     INITIALIZE WSS-TRANS-COUNT
+                     ENTER TAL ENDTRANSACTION
+                     EXEC SQL BEGIN WORK END-EXEC
+                  END-IF
+               END-IF
+               PERFORM 9270-FETCH-UPD-SREFISPR
+           END-PERFORM.
+      EXEC SQL CLOSE CUR_UPD_SREFISPR END-EXEC.
+
+      IF START-TMF-TRANS
+         INITIALIZE WSS-TRANS-COUNT
+         ENTER TAL ENDTRANSACTION
+         EXEC SQL BEGIN WORK END-EXEC
+      END-IF
+
+      EXEC SQL OPEN CUR_DEL_SREFISTR END-EXEC
+        PERFORM 9290-FETCH-DEL-SREFISTR
+        IF WSS-EOT-CUR-SREFISTR-NO
+           PERFORM UNTIL WSS-EOT-CUR-SREFISTR-SI
+               ADD 1 TO WSS-TRANS-COUNT
+
+               PERFORM 9300-DELETE-SREFISTR
+
+               IF WSS-TRANS-COUNT = PSS-TRANS-COUNT
+                  INITIALIZE WSS-TRANS-COUNT
+                  IF START-TMF-TRANS
+                     ENTER TAL ENDTRANSACTION
+                     EXEC SQL BEGIN WORK END-EXEC
+                  END-IF
+               END-IF
+               PERFORM 9290-FETCH-DEL-SREFISTR
+           END-PERFORM.
+      EXEC SQL CLOSE CUR_DEL_SREFISTR END-EXEC.
+
+      IF START-TMF-TRANS
+         INITIALIZE WSS-TRANS-COUNT
+         EXEC SQL COMMIT WORK END-EXEC.
+
+ 0200-CICLO-SREFISPR.
+      ADD 1 TO WSS-TOT-REGS-SREFISPR
+      PERFORM 9050-SELECT-SREFISPR
+      IF TRACE-ON
+         DISPLAY RFPR-NUM-CONTRATO, " ", RFPR-NUM-PRODUCTO, " ",
+         RFPR-CVE-TIPO-SALDO " " WSS-TOT-REGS-SREFISPR
+         UPON HOME-TERM.
+
+*       IF RFPR-NUM-CONTRATO NOT = H-RFPR-NUM-CONTRATO-ANT
+      IF RFPR-NUM-CONTRATO = RFPR-NUM-CONTRATO
+         initialize lss-cto-tratamiento-impositivo
+         perform Revisa-Imp-Cto.
+
+*       IF RFPR-NUM-PRODUCTO NOT = H-RFPR-NUM-PRODUCTO-ANT
+      IF RFPR-NUM-PRODUCTO = RFPR-NUM-PRODUCTO
+         initialize lss-pro-tratamiento-impositivo
+         IF RFPR-NUM-PRODUCTO = ZERO
+            INITIALIZE SEMISORA-REG SPRODOPE-REG
+            MOVE "N" TO LSS-BAND-ES-INSTRUM-CUPONADO
+            MOVE "N" TO LSS-BAND-ES-INSTRUM-UDIZADO
+          ELSE
+            initialize semisora-reg
+            MOVE RFPR-NUM-PRODUCTO TO EMIS-NUM-PRODUCTO
+                                      PROP-NUM-PRODUCTO
+            PERFORM 9210-SELECT-SEMISORA
+            MOVE "N" TO LSS-BAND-ES-INSTRUM-UDIZADO
+            IF EMIS-CVE-UNIDAD-VALUADORA = "UDI"
+               MOVE "S" TO LSS-BAND-ES-INSTRUM-UDIZADO
+             END-IF
+            if emis-band-cobra-impuestos-rv = "S"
+               set PRO-GRAVADO to TRUE
+            end-if
+            PERFORM 9200-SELECT-SPRODOPE
+            INITIALIZE LSS-CAR-PARN-ENTRADA
+            MOVE 1                 TO LSS-CAR-PARN-HEADER
+            MOVE EMIS-NUM-PRODUCTO TO LSS-CAR-VALOR-REFERENCIA
+            MOVE "CORC"            TO LSS-CAR-CVE-CARACTERISTICA
+            MOVE 1                 TO LSS-CAR-NUMF-CARACTERISTICA
+            PERFORM 9400-LEE-CARACTERISTICA
+            MOVE "N" TO LSS-BAND-ES-INSTRUM-CUPONADO
+            IF LSS-CAR-IND-VAL > 0 AND
+               LSS-CAR-VAL-CODX-VALOR (1) = "SI"
+               MOVE "S" TO LSS-BAND-ES-INSTRUM-CUPONADO
+            END-IF.
+
+      IF EMIS-NUM-PRODUCTO NOT = 37860 AND
+         EMIS-CVE-TIPO-VALOR NOT = "CF"
+         PERFORM 0210-PROCESA-TIPO-SALDO
+      END-IF.
+
+      MOVE RFPR-NUM-CONTRATO   TO RFRI-ULT-REGISTRO-1
+      MOVE RFPR-NUM-PRODUCTO   TO RFRI-ULT-REGISTRO-2
+      MOVE RFPR-CVE-TIPO-SALDO TO RFRI-ULT-REGISTRO-3
+      INITIALIZE H-VARIABLES-HOST STRANSAC-REG
+      MOVE RFPR-NUM-CONTRATO TO H-RFPR-NUM-CONTRATO-ANT
+      MOVE RFPR-NUM-PRODUCTO TO H-RFPR-NUM-PRODUCTO-ANT
+      PERFORM 9090-FETCH-SREFISPR.
+
+ 0210-PROCESA-TIPO-SALDO.
+      IF RFPR-NUM-PRODUCTO = ZERO
+         initialize LSS-CODN-TIPO-TRATAMIENTO
+      else
+          initialize LSS-CODN-TIPO-TRATAMIENTO
+          if CTO-GRAVADO and PRO-GRAVADO
+             move 1 to LSS-CODN-TIPO-TRATAMIENTO.
+
+      IF RFPR-TIT-INICIAL  > ZERO AND
+         RFPR-NUM-PRODUCTO > ZERO AND
+         RFPR-FECH-ULT-MOVTO = ZERO AND
+         RFPR-CVE-TIPO-SALDO IS NOT EQUAL TO "REPO"
+         MOVE RFPR-TIT-INICIAL TO RFPR-TIT-TEMPORAL
+         MOVE WSS-ULTIMO-DD-HABIL-MM-ANT (01:06)
+           TO RFPR-ANIO-MES
+         PERFORM 9310-SELECT-SREFISPR
+         MOVE PSS-FECHA-PROCESO (1:6)
+           TO RFPR-ANIO-MES
+         PERFORM 9250-UPDATE-SREFISPR
+      END-IF.
+
+      MOVE WSS-PRIMER-DD-HABIL-MM-ACT TO H-FECH-A4MMDD-INI
+      MOVE WSS-ULTIMO-DD-HABIL-MM-ACT TO H-FECH-A4MMDD-FIN
+      MOVE RFPR-NUM-CONTRATO          TO TRAN-NUM-CONTRATO
+      MOVE RFPR-NUM-PRODUCTO          TO TRAN-NUM-PRODUCTO
+
+      EXEC SQL OPEN CUR_STRANSAC END-EXEC
+        PERFORM 9160-FETCH-STRANSAC
+        IF WSS-EOT-CUR-STRANSAC-NO
+           PERFORM 0200-CICLO-STRANSAC
+             UNTIL WSS-EOT-CUR-STRANSAC-SI
+        END-IF
+      EXEC SQL CLOSE CUR_STRANSAC END-EXEC.
+
+ Revisa-Imp-Cto.
+      initialize scarxcto-reg scontrat-reg scliente-reg
+      move 1 to ccto-cant-porc-cargo
+      move rfpr-num-contrato to ccto-num-contrato
+                                cont-num-contrato
+      move "IMPU" to ccto-cve-cargo
+      perform 9430-select-SCARXCTO
+      move ccto-cant-porc-cargo
+        to lss-cto-tratamiento-impositivo
+      IF CTO-GRAVADO
+         move 1 to ccto-cant-porc-cargo
+         perform 9440-select-SCONTRAT
+          move ccto-cant-porc-cargo
+            to lss-cto-tratamiento-impositivo.
+      move ZERO to SQLCODE.
+
+ 0200-CICLO-STRANSAC.
+      ADD 1 TO WSS-TOT-REGS-STRANSAC
+      PERFORM 9120-SELECT-TRANSACCION
+      PERFORM 0210-PROCESA-TRANSACCION
+      INITIALIZE STRANSAC-REG
+                 H-TRAN-ADICIONALES
+                 STRANSAC-REG STRAMDIN-REG STRACONV-REG
+                 STRASOCI-REG STRADEPA-REG
+                 STRAMCAP-REG STRAVENT-REG
+                 STRAPVAL-REG SPRESTAM-REG.
+      PERFORM 9160-FETCH-STRANSAC.
+
+ 0210-PROCESA-TRANSACCION.
+      MOVE TRAN-CVE-TIPO-TRANSACCION TO WSS-CVE-TIPO-TRANSACCION
+      MOVE TRAN-CVE-OPER       TO LSS-CVE-OPER
+      MOVE OPDI-CVE-TIPO-SALDO TO LSS-CVE-TIPO-SALDO
+      IF RFPR-NUM-PRODUCTO = ZERO
+         MOVE "DISP" TO OPDI-CVE-TIPO-SALDO.
+      IF PRVL
+         MOVE "PADO" TO OPDI-CVE-TIPO-SALDO.
+      IF RFPR-CVE-TIPO-SALDO IS NOT EQUAL TO OPDI-CVE-TIPO-SALDO
+         EVALUATE PROP-CVE-MERCADO ALSO TRUE
+             WHEN "MCAP" ALSO NOT PRVL
+                   MOVE "DISP" TO OPDI-CVE-TIPO-SALDO
+             WHEN "SINV" ALSO ANY
+                   MOVE "DISP" TO OPDI-CVE-TIPO-SALDO
+             WHEN "MDIN" ALSO NOT REPORTO
+                   MOVE "DIRE" TO OPDI-CVE-TIPO-SALDO
+         END-EVALUATE.
+      IF TRACE-ON
+         DISPLAY TRAN-FECH-APLICACION, " ",
+                 TRAN-NUMF-TRANSACCION, " ",
+                 TRAN-CVE-TIPO-TRANSACCION, " ",
+                 TRAN-CVE-OPER, " ",
+                 OPDI-CVE-TIPO-SALDO
+                 UPON HOME-TERM.
+
+      IF RFPR-CVE-TIPO-SALDO = OPDI-CVE-TIPO-SALDO
+         PERFORM 0220-APLICA-TRANSACCION.
+
+ 0220-APLICA-TRANSACCION.
+      EVALUATE TRUE
+         WHEN MCAP
+            MOVE TRAN-CVE-PARTICION    TO TRMC-CVE-PARTICION
+            MOVE TRAN-NUMF-TRANSACCION TO TRMC-NUMF-TRANSACCION
+            PERFORM 9150-SELECT-STRAMCAP
+         WHEN PRVL
+            INITIALIZE STRAPVAL-REG SPRESTAM-REG
+            MOVE TRAN-CVE-PARTICION    TO TPVA-CVE-PARTICION
+            MOVE TRAN-NUMF-TRANSACCION TO TPVA-NUMF-TRANSACCION
+            MOVE TRAN-NUMF-ORDEN       TO PRES-NUMF-PRESTAMO
+            PERFORM 9410-SELECT-STRAPVAL
+            IF PREMIO-PRVL
+               SET WSS-EOT-SPRESTAM-NO TO TRUE
+               PERFORM 9420-SELECT-SPRESTAM
+               IF WSS-EOT-SPRESTAM-NO
+                  MOVE TPVA-TASA-PRESTAMO TO H-TASA-RENDIMIENTO
+                  MOVE PRES-FECH-ASIGNACION       TO TRAN-FECH-REGISTRO
+                  MOVE PRES-FECH-LIQUIDACION-REAL TO TRAN-FECH-APLICACION
+                  IF PRES-FECH-LIQUIDACION-REAL < PRES-FECH-LIQUIDACION-ORIG
+*                    prevencimiento
+                     COMPUTE H-TASA-RENDIMIENTO ROUNDED
+                           = H-TASA-RENDIMIENTO + TPVA-TASA-SOBRETASA
+                  END-IF
+                  MOVE TRAN-IMPO-TRANSACCION TO H-IMPO-PREMIO
+                  INITIALIZE WSS-DAYSBTWDATES
+                  MOVE TRAN-FECH-REGISTRO   TO WSS-DAYSBTWDATES-FECHA-INI-NUM
+                  MOVE TRAN-FECH-APLICACION TO WSS-DAYSBTWDATES-FECHA-FIN-NUM
+                  PERFORM 8040-CALL-DAYSBTWDATES
+                  MOVE WSS-DAYSBTWDATES-RESULTADO TO H-PLZO-DIAS
+               END-IF
+            END-IF
+         WHEN SOIN
+            MOVE TRAN-CVE-PARTICION    TO TRSI-CVE-PARTICION
+            MOVE TRAN-NUMF-TRANSACCION TO TRSI-NUMF-TRANSACCION
+            PERFORM 9180-SELECT-STRASOCI
+         WHEN MDIN
+            MOVE TRAN-CVE-PARTICION    TO TRMD-CVE-PARTICION
+            MOVE TRAN-NUMF-TRANSACCION TO TRMD-NUMF-TRANSACCION
+            PERFORM 9220-SELECT-STRAMDIN
+         WHEN VENT
+            MOVE TRAN-NUMF-TRANS-GENERADORA TO TRVE-NUMF-TRANSACCION
+            MOVE H-TRAN-CVE-PARTICION       TO TRVE-CVE-PARTICION
+            PERFORM 9240-SELECT-STRAVENT
+         WHEN CONV
+            MOVE TRAN-CVE-PARTICION    TO TRCV-CVE-PARTICION
+            MOVE TRAN-NUMF-TRANSACCION TO TRCV-NUMF-TRANSACCION
+            PERFORM 9230-SELECT-STRACONV
+         WHEN DEPA
+            MOVE TRAN-CVE-PARTICION    TO TRDP-CVE-PARTICION
+            MOVE TRAN-NUMF-TRANSACCION TO TRDP-NUMF-TRANSACCION
+            PERFORM 9260-SELECT-STRADEPA
+      END-EVALUATE.
+
+      IF OPDI-CODN-CUS IS NOT EQUAL TO ZERO
+         AND TRAN-IMPO-TRANSACCION = ZERO
+         AND TRAN-NUM-PRODUCTO > ZERO
+         INITIALIZE SHISPREC-REG
+         MOVE TRAN-NUM-PRODUCTO    TO HPRE-NUM-PRODUCTO
+         MOVE TRAN-FECH-APLICACION TO HPRE-FECH-CIERRE
+         PERFORM 9130-SELECT-SHISPREC
+         MOVE HPRE-PREG-CIERRE TO H-PREC-TRANSACCION
+         COMPUTE TRAN-IMPO-TRANSACCION ROUNDED
+               = H-PREC-TRANSACCION
+               * H-TIT-TRANSACCION.
+
+      IF OPDI-CODN-CUS = ZERO AND
+         OPDI-CODN-EFE = 1 AND
+         OPDI-CODN-TIPO-IMPORTE = 4
+         INITIALIZE SHISPREC-REG SHISPOSI-REG
+         MOVE TRAN-NUM-PRODUCTO    TO HPRE-NUM-PRODUCTO
+         MOVE TRAN-FECH-APLICACION TO HPRE-FECH-CIERRE
+         PERFORM 9130-SELECT-SHISPREC
+         MOVE HPRE-PREG-CIERRE TO H-PREC-TRANSACCION
+         IF H-TIT-TRANSACCION = 0
+            MOVE -1 TO WSS-SIGHABIL-DIAS-HAB
+            MOVE TRAN-FECH-APLICACION TO WSS-SIGHABIL-FECHA-INI-NUM
+                                         WSS-SIGHABIL-FECHA-FIN-NUM
+            PERFORM 8020-CALL-SIGHABIL
+            MOVE WSS-SIGHABIL-FECHA-FIN-NUM TO HPOS-FECH-POSICION
+            MOVE TRAN-NUM-CONTRATO          TO HPOS-NUM-CONTRATO
+            MOVE TRAN-NUM-PRODUCTO          TO HPOS-NUM-PRODUCTO
+            PERFORM 9450-SELECT-SHISPOSI
+            MOVE HPOS-SLDO-TIT-INICIAL TO H-TIT-TRANSACCION.
+
+      MOVE ZERO TO H-INT-DEVENGADOS
+      IF TRN-GENERA-INT-DEVENGADOS
+         PERFORM 9390-SELECT-INT-DEVENGADOS
+         ADD H-INT-DEVENGADOS TO TRAN-IMPO-TRANSACCION.
+
+      IF TRACE-ON
+         DISPLAY "apl-->",
+                 "Tit: "     H-TIT-TRANSACCION,
+                 "Imp: "     TRAN-IMPO-TRANSACCION,
+                 "Int.Dev: " H-INT-DEVENGADOS,
+                 "Plzo: "    H-PLZO-DIAS,
+                 "Tasa: "    H-TASA-RENDIMIENTO
+                  UPON HOME-TERM.
+
+      INITIALIZE SREFISTR-REG LSS-IMPORTES-PRODUCTO
+      IF TRAN-NUM-PRODUCTO = 0 INITIALIZE LSS-CODN-TIPO-TRATAMIENTO.
+      MOVE ZERO                          TO LSS-NUM-HEADER
+      MOVE RFPR-ANIO-MES                 TO LSS-FECH-A4MM
+      MOVE TRAN-NUM-CONTRATO             TO LSS-NUM-CONTRATO
+      MOVE TRAN-NUM-PRODUCTO             TO LSS-NUM-PRODUCTO
+      MOVE PROP-CVE-MERCADO              TO LSS-CVE-MERCADO
+      MOVE RFPR-CVE-TIPO-SALDO           TO LSS-CVE-TIPO-SALDO
+      MOVE RFPR-CVE-TIPO-VALOR           TO LSS-CVE-TIPO-VALOR
+      MOVE TRAN-NUMF-TRANSACCION         TO LSS-NUMF-TRANSACCION
+      MOVE TRAN-NUMF-ORDEN               TO lss-NUMF-ORDEN
+      MOVE TRAN-CVE-TIPO-TRANSACCION     TO LSS-CVE-TIPO-TRANSACCION
+      MOVE TRAN-CVE-OPER                 TO LSS-CVE-OPER
+      MOVE TRAN-NUMF-TRANS-GENERADORA    TO LSS-NUMF-TRANS-GENERADORA
+      MOVE TRAN-FECH-REGISTRO            TO LSS-FECH-REGISTRO
+      MOVE TRAN-FECH-APLICACION          TO LSS-FECH-APLICACION
+      MOVE TRAN-IMPO-TRANSACCION         TO LSS-IMPO-TRANSACCION
+      MOVE H-TIT-TRANSACCION             TO LSS-TIT-TRANSACCION
+      MOVE H-PREC-TRANSACCION            TO LSS-PREC-TRANSACCION
+      MOVE H-PLZO-DIAS                   TO LSS-PLZO-DIAS
+      MOVE H-TASA-RENDIMIENTO            TO LSS-TASA-RENDIMIENTO
+      MOVE H-IMPO-PREMIO                 TO LSS-IMPO-PREMIO
+      MOVE H-IMPO-NETO                   TO LSS-IMPO-NETO
+      MOVE OPDI-CODN-CUS                 TO LSS-CODN-CUS
+      MOVE OPDI-CODN-EFE                 TO LSS-CODN-EFE
+      MOVE OPDI-CODN-TIPO-IMPORTE        TO LSS-CODN-TIPO-IMPORTE
+      MOVE OPDI-CODN-MOVTO-EFECTIVO      TO LSS-CODN-MOVTO-EFECTIVO
+      MOVE EMIS-CVE-UNIDAD-VALUADORA     TO LSS-CVE-UNIDAD-VALUADORA
+      MOVE EMIS-PREG-NOMINAL             TO LSS-PREG-NOMINAL
+      MOVE ZERO                          TO LSS-CODN-TIPO-GANANCIA
+      MOVE RFPR-IMPO-COSTO-PROMEDIO      TO LSS-IMPO-COSTO-PROMEDIO
+      MOVE RFPR-IMPO-COSTO-PROM-AJUSTADO TO LSS-IMPO-COSTO-PROM-AJUSTADO
+      MOVE RFPR-TIT-TEMPORAL             TO LSS-TIT-TEMPORAL
+      MOVE RFPR-FECH-ULT-MOVTO           TO LSS-FECH-ULT-MOVTO
+      MOVE WSS-ULTIMO-DD-HABIL-AA-ANT    TO LSS-ULTIMO-DD-HABIL-AA-ANT
+      MOVE SPACES                        TO LSS-TXT-MSG-ERROR
+
+      CALL "APLICA-TRANSACCION" USING LSS-REFCAL
+
+      IF LSS-NUM-HEADER = ZERO
+          ADD 1 TO WSS-TRANS-COUNT WSS-TOT-REGS-SREFISTR
+      ELSE
+         INITIALIZE WSS-ERR-MENSAJE
+         STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                SPACE "Error en la libreria de calculos"
+                DELIMITED BY SIZE INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         DISPLAY LSS-TXT-MSG-ERROR UPON HOME-TERM
+         DISPLAY "TRANSACCION : " , LSS-NUMF-TRANSACCION UPON HOME-TERM
+         ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED, 1
+      END-IF
+
+      ADD  LSS-IMPO-ENTRADAS             TO RFPR-IMPO-ENTRADAS
+      ADD  LSS-IMPO-SALIDAS              TO RFPR-IMPO-SALIDAS
+      ADD  LSS-IMPO-INT-NOMINAL-GRAVADO  TO RFPR-IMPO-INT-NOMINAL-GRAVADO
+      ADD  LSS-IMPO-INT-REAL-GRAVADO     TO RFPR-IMPO-INT-REAL-GRAVADO
+      ADD  LSS-IMPO-GAN-NOMINAL-GRAVADO  TO RFPR-IMPO-GAN-NOMINAL-GRAVADO
+      ADD  LSS-IMPO-GAN-REAL-GRAVADO     TO RFPR-IMPO-GAN-REAL-GRAVADO
+      ADD  LSS-IMPO-INT-NOMINAL-EXENTO   TO RFPR-IMPO-INT-NOMINAL-EXENTO
+      ADD  LSS-IMPO-INT-REAL-EXENTO      TO RFPR-IMPO-INT-REAL-EXENTO
+      ADD  LSS-IMPO-GAN-NOMINAL-EXENTO   TO RFPR-IMPO-GAN-NOMINAL-EXENTO
+      ADD  LSS-IMPO-GAN-REAL-EXENTO      TO RFPR-IMPO-GAN-REAL-EXENTO
+
+      IF TIPO-IMPORTE-DIVIDENDO
+         IF EMIS-CVE-TIPO-VALOR = "1A" OR "1E" OR "1I"
+            ADD LSS-IMPO-DIVIDENDOS TO RFPR-IMPO-DIVIDENDOs-EXTR
+         ELSE
+            ADD LSS-IMPO-DIVIDENDOS TO RFPR-IMPO-DIVIDENDOS-INTR.
+
+      ADD  LSS-IMPO-COMISIONES-RV        TO RFPR-IMPO-COMISIONES-RV
+      MOVE LSS-IMPO-COSTO-PROMEDIO       TO RFPR-IMPO-COSTO-PROMEDIO
+      MOVE LSS-IMPO-COSTO-PROM-AJUSTADO  TO RFPR-IMPO-COSTO-PROM-AJUSTADO
+      ADD  LSS-IMPO-RETENCION            TO RFPR-IMPO-RETENCION
+      MOVE LSS-TIT-TEMPORAL              TO RFPR-TIT-TEMPORAL
+      MOVE LSS-FECH-ULT-MOVTO            TO RFPR-FECH-ULT-MOVTO
+
+      PERFORM 9250-UPDATE-SREFISPR
+
+      IF WSS-TRANS-COUNT = PSS-TRANS-COUNT
+         MOVE "N" TO RFRI-BAND-ESTA-TERMINADO
+         MOVE RFPR-NUM-CONTRATO       TO RFRI-ULT-REGISTRO-1
+         MOVE RFPR-NUM-PRODUCTO       TO RFRI-ULT-REGISTRO-2
+         MOVE RFPR-CVE-TIPO-SALDO     TO RFRI-ULT-REGISTRO-3
+         MOVE TRAN-NUMF-TRANSACCION   TO RFRI-ULT-REGISTRO-4
+         PERFORM 7020-GRABA-REINICIO
+         IF START-TMF-TRANS
+            INITIALIZE WSS-CONTADORES
+            ENTER TAL ENDTRANSACTION
+            EXEC SQL BEGIN WORK END-EXEC.
+
+*** Rutinas generales
+
+ 7000-OBTEN-FECHA-HORA.
+      MOVE FUNCTION CURRENT-DATE TO WSS-FECHA-HORA
+      MOVE WSS-FH-AA  TO WSS-DF-YYYY
+      MOVE WSS-FH-MM  TO WSS-DF-MM
+      MOVE WSS-FH-DD  TO WSS-DF-DD
+      MOVE WSS-FH-HH  TO WSS-HH WSS-DF-HH
+      MOVE WSS-FH-MI  TO WSS-MN WSS-DF-MN
+      MOVE WSS-FH-SS  TO WSS-SG WSS-DF-SG
+      MOVE WSS-FH-CEN TO WSS-CN.
+
+ 7010-OBTEN-PARAMETRO.
+      INITIALIZE WSS-PRM-VALOR
+      ENTER "GETPARAMTEXT"
+             USING  WSS-PRM-NOM(1:WSS-PRM-NOM-LNG)
+                    WSS-PRM-VALOR
+             GIVING WSS-PRM-RSL
+      INITIALIZE WSS-PRM-NOM-LNG WSS-PRM-NOM.
+
+ 7020-GRABA-REINICIO.
+      PERFORM 7000-OBTEN-FECHA-HORA
+      MOVE WSS-FECH-DEFAULT-FMT    TO RFRI-FECH-FIN-EJECUCION
+      MOVE WSS-TOT-REGS-SREFISPR   TO RFRI-TOT-REGISTROS-1
+      MOVE WSS-TOT-REGS-STRANSAC   TO RFRI-TOT-REGISTROS-2
+      MOVE WSS-TOT-REGS-SREFISTR   TO RFRI-TOT-REGISTROS-3
+      PERFORM 9040-UPDATE-SREFISRI.
+
+*** Funciones de biblioteca y accesos Enscribe
+
+ 8000-CALL-TGETMYID.
+      ENTER TAL "TGETMYID"
+            USING WSS-PARA-TGMID-PROGFILE
+                  WSS-PARA-TGMID-PROCNAME
+                  WSS-PARA-TGMID-USERGROUP.
+
+ 8010-CALL-CHECKDATE.
+      CALL "CHECKDATE"
+           USING WSS-CHECKDATE-FECH
+                 WSS-CHECKDATE-RESULTADO
+        ON EXCEPTION
+           MOVE 1 TO WSS-CHECKDATE-RESULTADO.
+
+ 8020-CALL-SIGHABIL.
+      CALL "SIGHABIL"
+           USING WSS-SIGHABIL-FECHA-INI
+                 WSS-SIGHABIL-FECHA-FIN
+                 WSS-SIGHABIL-DIAS-HAB
+        ON EXCEPTION
+           MOVE 0 TO WSS-SIGHABIL-FECHA-FIN.
+
+ 8040-CALL-DAYSBTWDATES.
+      CALL "DAYSBTWDATES"
+            USING WSS-DAYSBTWDATES-FECHA-INI
+                  WSS-DAYSBTWDATES-FECHA-FIN
+                  WSS-DAYSBTWDATES-RESULTADO
+        ON EXCEPTION
+           MOVE 0 TO WSS-DAYSBTWDATES-RESULTADO.
+
+ COPY MENSAJES-OPERADOR OF $DESA12.SCOGLCPA.C85DEFPG.
+
+*** Codigo sql
+
+ 9000-SELECT-SCTRSIS.
+      EXEC SQL
+           SELECT CTSI_FECH_SISTEMA INTO :CTSI-FECH-SISTEMA
+            FROM =SCTRSIS
+            WHERE CTSI_NUM_SISTEMA
+                =(SELECT CTSI_NUM_SISTEMA
+                   FROM =SCTRSIS
+                   WHERE CTSI_CVE_SISTEMA="SIBU"
+                     AND CTSI_CODX_STATUS="ACTI"
+                  BROWSE ACCESS)
+           BROWSE ACCESS
+      END-EXEC.
+      IF SQLCODE NOT EQUAL TO ZERO
+         INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+         MOVE SQLCODE TO DSS-AV-ERROR
+         INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+             FOR LEADING SPACES
+         STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                SPACE
+               "SQLCODE:"
+                DSS-AV-ERROR(WSS-IND-EDI:)
+                SPACE
+               "Al leer la tabla: =SCTRSIS"
+                DELIMITED BY SIZE
+           INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         ENTER TAL "SQLCADISPLAY" USING SQLCA
+         ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED , 1.
+
+ 9010-SELECT-SREFISRI.
+      SET WSS-EOT-SREFISRI-NO TO TRUE
+      EXEC SQL
+           SELECT
+                  DATEFORMAT (S1.RFRI_FECH_INI_EJECUCION
+                  YEAR TO SECOND, DEFAULT)
+                 ,UPSHIFT(TRIM(S1.RFRI_BAND_ESTA_TERMINADO))
+                 ,S1.RFRI_TOT_REGISTROS_1
+                 ,S1.RFRI_TOT_REGISTROS_2
+                 ,S1.RFRI_TOT_REGISTROS_3
+                 ,S1.RFRI_TOT_REGISTROS_4
+                 ,S1.RFRI_TOT_REGISTROS_5
+                 ,S1.RFRI_TOT_REGISTROS_6
+                 ,UPSHIFT(TRIM(S1.RFRI_ULT_REGISTRO_1))
+                 ,UPSHIFT(TRIM(S1.RFRI_ULT_REGISTRO_2))
+                 ,UPSHIFT(TRIM(S1.RFRI_ULT_REGISTRO_3))
+                 ,UPSHIFT(TRIM(S1.RFRI_ULT_REGISTRO_4))
+            INTO :RFRI-FECH-INI-EJECUCION
+                ,:RFRI-BAND-ESTA-TERMINADO
+                ,:RFRI-TOT-REGISTROS-1
+                ,:RFRI-TOT-REGISTROS-2
+                ,:RFRI-TOT-REGISTROS-3
+                ,:RFRI-TOT-REGISTROS-4
+                ,:RFRI-TOT-REGISTROS-5
+                ,:RFRI-TOT-REGISTROS-6
+                ,:RFRI-ULT-REGISTRO-1
+                ,:RFRI-ULT-REGISTRO-2
+                ,:RFRI-ULT-REGISTRO-3
+                ,:RFRI-ULT-REGISTRO-4
+            FROM =SREFISRI S1
+            WHERE S1.RFRI_FECH_PROCESO  = :RFRI-FECH-PROCESO
+              AND S1.RFRI_NOMB_PROGRAMA = :RFRI-NOMB-PROGRAMA
+              AND S1.RFRI_NUM_COPIA     = :RFRI-NUM-COPIA
+              AND S1.RFRI_FECH_INI_EJECUCION =
+                   (SELECT MAX(S2.RFRI_FECH_INI_EJECUCION)
+                     FROM =SREFISRI S2
+                     WHERE S2.RFRI_FECH_PROCESO  = S1.RFRI_FECH_PROCESO
+                       AND S2.RFRI_NOMB_PROGRAMA = S1.RFRI_NOMB_PROGRAMA
+                       AND S2.RFRI_NUM_COPIA     = S1.RFRI_NUM_COPIA
+                       FOR BROWSE ACCESS)
+              FOR BROWSE ACCESS
+      END-EXEC.
+      IF SQLCODE NOT = ZERO
+         SET WSS-EOT-SREFISRI-SI TO TRUE
+         IF SQLCODE NOT = 100
+            INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+            MOVE SQLCODE TO DSS-AV-ERROR
+            INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+                FOR LEADING SPACES
+            STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                   SPACE
+                  "SQLCODE:"
+                   DSS-AV-ERROR(WSS-IND-EDI:)
+                   SPACE
+                  "Al leer la tabla: =SREFISRI"
+                   DELIMITED BY SIZE
+              INTO WSS-ERR-MENSAJE
+            DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+            ENTER TAL "SQLCADISPLAY" USING SQLCA
+            ENTER TAL "PROCESS_STOP_" USING OMITTED, OMITTED, 1.
+
+ 9030-INSERT-SREFISRI.
+      EXEC SQL
+           INSERT INTO =SREFISRI
+                  (RFRI_FECH_PROCESO
+                  ,RFRI_NOMB_PROGRAMA
+                  ,RFRI_NUM_COPIA
+                  ,RFRI_FECH_INI_EJECUCION
+                  ,RFRI_TOT_REGISTROS_1
+                  ,RFRI_TOT_REGISTROS_2
+                  ,RFRI_TOT_REGISTROS_3
+                  ,RFRI_TOT_REGISTROS_4
+                  ,RFRI_TOT_REGISTROS_5
+                  ,RFRI_TOT_REGISTROS_6
+                  ,RFRI_ULT_REGISTRO_1
+                  ,RFRI_ULT_REGISTRO_2
+                  ,RFRI_ULT_REGISTRO_3
+                  ,RFRI_ULT_REGISTRO_4
+                  ,RFRI_ULT_REGISTRO_5)
+           VALUES (
+                  :RFRI-FECH-PROCESO
+                  ,UPSHIFT(TRIM(:RFRI-NOMB-PROGRAMA))
+                 ,:RFRI-NUM-COPIA
+                  ,CAST(:RFRI-FECH-INI-EJECUCION
+                   AS DATETIME YEAR TO SECOND)
+                 ,:RFRI-TOT-REGISTROS-1
+                 ,:RFRI-TOT-REGISTROS-2
+                 ,:RFRI-TOT-REGISTROS-3
+                 ,:RFRI-TOT-REGISTROS-4
+                 ,:RFRI-TOT-REGISTROS-5
+                 ,:RFRI-TOT-REGISTROS-6
+                  ,UPSHIFT(TRIM(:RFRI-ULT-REGISTRO-1))
+                  ,UPSHIFT(TRIM(:RFRI-ULT-REGISTRO-2))
+                  ,UPSHIFT(TRIM(:RFRI-ULT-REGISTRO-3))
+                  ,UPSHIFT(TRIM(:RFRI-ULT-REGISTRO-4))
+                  ,UPSHIFT(TRIM(:RFRI-ULT-REGISTRO-5)))
+         For Repeatable access
+      END-EXEC.
+      IF SQLCODE NOT = ZERO
+         INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+         MOVE SQLCODE TO DSS-AV-ERROR
+         INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+             FOR LEADING SPACES
+         STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                SPACE
+               "SQLCODE:"
+                DSS-AV-ERROR(WSS-IND-EDI:)
+                SPACE
+               "Al grabar la tabla: =SREFISRI"
+                SPACE
+                DELIMITED BY SIZE
+           INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         ENTER TAL "SQLCADISPLAY" USING SQLCA
+         ENTER TAL "PROCESS_STOP_" USING OMITTED, OMITTED, 1.
+
+ 9040-UPDATE-SREFISRI.
+      EXEC SQL
+           UPDATE =SREFISRI
+           SET RFRI_FECH_FIN_EJECUCION  =  CAST(:RFRI-FECH-FIN-EJECUCION
+                                           AS DATETIME YEAR TO SECOND)
+              ,RFRI_BAND_ESTA_TERMINADO = :RFRI-BAND-ESTA-TERMINADO
+              ,RFRI_TOT_REGISTROS_1     =  RFRI_TOT_REGISTROS_1
+                                        + :RFRI-TOT-REGISTROS-1
+              ,RFRI_TOT_REGISTROS_2     =  RFRI_TOT_REGISTROS_2
+                                        + :RFRI-TOT-REGISTROS-2
+              ,RFRI_TOT_REGISTROS_3     =  RFRI_TOT_REGISTROS_3
+                                        + :RFRI-TOT-REGISTROS-3
+              ,RFRI_TOT_REGISTROS_4     =  RFRI_TOT_REGISTROS_4
+                                        + :RFRI-TOT-REGISTROS-4
+              ,RFRI_TOT_REGISTROS_5     =  RFRI_TOT_REGISTROS_5
+                                        + :RFRI-TOT-REGISTROS-5
+              ,RFRI_TOT_REGISTROS_6     =  RFRI_TOT_REGISTROS_6
+                                        + :RFRI-TOT-REGISTROS-6
+              ,RFRI_ULT_REGISTRO_1      = :RFRI-ULT-REGISTRO-1
+              ,RFRI_ULT_REGISTRO_2      = :RFRI-ULT-REGISTRO-2
+              ,RFRI_ULT_REGISTRO_3      = :RFRI-ULT-REGISTRO-3
+              ,RFRI_ULT_REGISTRO_4      = :RFRI-ULT-REGISTRO-4
+              ,RFRI_ULT_REGISTRO_5      = :RFRI-ULT-REGISTRO-5
+         WHERE RFRI_FECH_PROCESO        = :RFRI-FECH-PROCESO
+           AND RFRI_NOMB_PROGRAMA       = :RFRI-NOMB-PROGRAMA
+           AND RFRI_NUM_COPIA           = :RFRI-NUM-COPIA
+           AND RFRI_FECH_INI_EJECUCION  = CAST(:RFRI-FECH-INI-EJECUCION
+                                           AS DATETIME YEAR TO SECOND)
+           FOR STABLE ACCESS
+      END-EXEC.
+      IF SQLCODE NOT = ZERO
+         INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+         MOVE SQLCODE TO DSS-AV-ERROR
+         INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+             FOR LEADING SPACES
+         STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                SPACE
+               "SQLCODE:"
+                DSS-AV-ERROR(WSS-IND-EDI:)
+                SPACE
+               "Al actualizar la tabla: =SREFISRI"
+                SPACE
+                DELIMITED BY SIZE
+           INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         ENTER TAL "SQLCADISPLAY" USING SQLCA
+         ENTER TAL "PROCESS_STOP_" USING OMITTED, OMITTED, 1.
+
+ 9050-SELECT-SREFISPR.
+      SET WSS-EOT-SREFISPR-NO TO TRUE
+      EXEC SQL
+           SELECT UPPER(TRIM(RFPR_CVE_TIPO_VALOR))
+                 ,RFPR_IMPO_SALDO_PROMEDIO
+                 ,RFPR_IMPO_SALDO_INICIAL
+                 ,RFPR_IMPO_SALDO_CIERRE
+                 ,RFPR_IMPO_ENTRADAS
+                 ,RFPR_IMPO_SALIDAS
+                 ,RFPR_IMPO_INT_NOMINAL_GRAVADO
+                 ,RFPR_IMPO_INT_REAL_GRAVADO
+                 ,RFPR_IMPO_GAN_NOMINAL_GRAVADO
+                 ,RFPR_IMPO_GAN_REAL_GRAVADO
+                 ,RFPR_IMPO_INT_NOMINAL_EXENTO
+                 ,RFPR_IMPO_INT_REAL_EXENTO
+                 ,RFPR_IMPO_GAN_NOMINAL_EXENTO
+                 ,RFPR_IMPO_GAN_REAL_EXENTO
+                 ,RFPR_IMPO_DIVIDENDOS_EXTR
+                 ,RFPR_IMPO_DIVIDENDOS_INTR
+                 ,RFPR_IMPO_COMISIONES_RV
+                 ,RFPR_IMPO_COSTO_PROMEDIO
+                 ,RFPR_IMPO_COSTO_PROM_AJUSTADO
+                 ,RFPR_IMPO_RETENCION
+                 ,RFPR_TIT_INICIAL
+                 ,RFPR_TIT_TEMPORAL
+                 ,RFPR_FECH_ULT_MOVTO
+            INTO :RFPR-CVE-TIPO-VALOR
+                ,:RFPR-IMPO-SALDO-PROMEDIO
+                ,:RFPR-IMPO-SALDO-INICIAL
+                ,:RFPR-IMPO-SALDO-CIERRE
+                ,:RFPR-IMPO-ENTRADAS
+                ,:RFPR-IMPO-SALIDAS
+                ,:RFPR-IMPO-INT-NOMINAL-GRAVADO
+                ,:RFPR-IMPO-INT-REAL-GRAVADO
+                ,:RFPR-IMPO-GAN-NOMINAL-GRAVADO
+                ,:RFPR-IMPO-GAN-REAL-GRAVADO
+                ,:RFPR-IMPO-INT-NOMINAL-EXENTO
+                ,:RFPR-IMPO-INT-REAL-EXENTO
+                ,:RFPR-IMPO-GAN-NOMINAL-EXENTO
+                ,:RFPR-IMPO-GAN-REAL-EXENTO
+                ,:RFPR-IMPO-DIVIDENDOS-EXTR
+                ,:RFPR-IMPO-DIVIDENDOS-INTR
+                ,:RFPR-IMPO-COMISIONES-RV
+                ,:RFPR-IMPO-COSTO-PROMEDIO
+                ,:RFPR-IMPO-COSTO-PROM-AJUSTADO
+                ,:RFPR-IMPO-RETENCION
+                ,:RFPR-TIT-INICIAL
+                ,:RFPR-TIT-TEMPORAL
+                ,:RFPR-FECH-ULT-MOVTO
+            FROM =SREFISPR
+            WHERE RFPR_ANIO_MES       = :RFPR-ANIO-MES
+              AND RFPR_NUM_CONTRATO   = :RFPR-NUM-CONTRATO
+              AND RFPR_NUM_PRODUCTO   = :RFPR-NUM-PRODUCTO
+              AND RFPR_CVE_TIPO_SALDO = :RFPR-CVE-TIPO-SALDO
+              FOR BROWSE ACCESS
+      END-EXEC.
+      IF SQLCODE NOT = ZERO
+           SET WSS-EOT-SREFISPR-SI TO TRUE
+           IF SQLCODE NOT = 100
+              SET WSS-EOT-SREFISRI-SI TO TRUE
+              INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+              MOVE SQLCODE TO DSS-AV-ERROR
+              INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+                  FOR LEADING SPACES
+              STRING "SQLCODE:"
+                      DSS-AV-ERROR(WSS-IND-EDI:)
+                      SPACE
+                     "Al leer la tabla: =SREFISPR"
+                      DELIMITED BY SIZE
+                 INTO WSS-ERR-MENSAJE
+              DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+              ENTER TAL "SQLCADISPLAY" USING SQLCA
+              ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED , 1.
+
+ 9060-SELECT-SREFISRI.
+      SET WSS-EOT-SREFISRI-NO TO TRUE
+      EXEC SQL
+           SELECT SUM(CASE UPSHIFT(TRIM(S1.RFRI_BAND_ESTA_TERMINADO))
+                      WHEN "S" THEN 0 ELSE 1 END)
+            INTO :RFRI-NUM-COPIA
+            FROM =SREFISRI S1
+            WHERE S1.RFRI_FECH_PROCESO  = :RFRI-FECH-PROCESO
+              AND S1.RFRI_NOMB_PROGRAMA = :RFRI-NOMB-PROGRAMA
+              AND S1.RFRI_FECH_INI_EJECUCION =
+                 (SELECT MAX(S2.RFRI_FECH_INI_EJECUCION)
+                   FROM =SREFISRI S2
+                   WHERE S2.RFRI_FECH_PROCESO  = S1.RFRI_FECH_PROCESO
+                     AND S2.RFRI_NOMB_PROGRAMA = S1.RFRI_NOMB_PROGRAMA
+                     FOR BROWSE ACCESS)
+              FOR BROWSE ACCESS
+      END-EXEC.
+      IF SQLCODE NOT = ZERO AND NOT = -8423
+         SET WSS-EOT-SREFISRI-SI TO TRUE
+         IF SQLCODE NOT = 100
+            INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+            MOVE SQLCODE TO DSS-AV-ERROR
+            INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+                FOR LEADING SPACES
+            STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                   SPACE
+                  "SQLCODE:"
+                   DSS-AV-ERROR(WSS-IND-EDI:)
+                   SPACE
+                  "Al leer la tabla: =SREFISRI"
+                   DELIMITED BY SIZE
+              INTO WSS-ERR-MENSAJE
+            DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+            ENTER TAL "SQLCADISPLAY" USING SQLCA
+            ENTER TAL "PROCESS_STOP_" USING OMITTED, OMITTED, 1.
+
+ 9090-FETCH-SREFISPR.
+      SET WSS-EOT-CUR-SREFISPR-NO TO TRUE
+      EXEC SQL FETCH CUR_SREFISPR
+           INTO :RFPR-NUM-CONTRATO
+               ,:RFPR-NUM-PRODUCTO
+               ,:RFPR-CVE-TIPO-SALDO
+      END-EXEC.
+      IF SQLCODE NOT = ZERO
+         SET WSS-EOT-CUR-SREFISPR-SI TO TRUE
+         IF SQLCODE NOT = 100
+            INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+            MOVE SQLCODE TO DSS-AV-ERROR
+            INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+                FOR LEADING SPACES
+            STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                   SPACE
+                  "SQLCODE:"
+                   DSS-AV-ERROR(WSS-IND-EDI:)
+                   SPACE
+                  "Al leer el cursor: CUR_SREFISPR"
+                   DELIMITED BY SIZE
+              INTO WSS-ERR-MENSAJE
+            DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+            ENTER TAL "SQLCADISPLAY" USING SQLCA
+            ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED, 1.
+
+ 9120-SELECT-TRANSACCION.
+      INITIALIZE SOPDISVE-REG
+      EXEC SQL
+           SELECT TRAN_CVE_PARTICION
+                 ,TRAN_NUMF_ORDEN
+                 ,TRAN_NUMF_TRANS_GENERADORA
+                 ,TRAN_CVE_TIPO_TRANSACCION
+                 ,TRAN_NUM_CONTRATO
+                 ,TRAN_NUM_PRODUCTO
+                 ,TRAN_CVE_OPER
+                 ,TRAN_NUMF_TRANS_GENERADORA
+                 ,TRAN_FECH_REGISTRO
+                 ,TRAN_FECH_APLICACION
+                 ,TRAN_IMPO_TRANSACCION
+            INTO
+                 :TRAN-CVE-PARTICION
+                ,:TRAN-NUMF-ORDEN
+                ,:TRAN-NUMF-TRANS-GENERADORA
+                ,:TRAN-CVE-TIPO-TRANSACCION
+                ,:TRAN-NUM-CONTRATO
+                ,:TRAN-NUM-PRODUCTO
+                ,:TRAN-CVE-OPER
+                ,:TRAN-NUMF-TRANS-GENERADORA
+                ,:TRAN-FECH-REGISTRO
+                ,:TRAN-FECH-APLICACION
+                ,:TRAN-IMPO-TRANSACCION
+            FROM =STRANSAC
+            WHERE TRAN_NUMF_TRANSACCION = :TRAN-NUMF-TRANSACCION
+           BROWSE ACCESS
+      END-EXEC.
+      IF SQLCODE = ZERO
+         MOVE TRAN-CVE-OPER TO OPDI-CVE-OPER-DISP
+         EXEC SQL
+              SELECT TRAN_CVE_OPER
+                    ,TRAN_CVE_PARTICION
+               INTO :OPDI-CVE-OPER-ORIGEN
+                   ,:H-TRAN-CVE-PARTICION
+               FROM =STRANSAC
+               WHERE TRAN_NUMF_TRANSACCION
+                   =:TRAN-NUMF-TRANS-GENERADORA
+              BROWSE ACCESS
+         END-EXEC
+         EXEC SQL
+              SELECT OPDI_CVE_TIPO_SALDO
+               INTO :OPDI-CVE-TIPO-SALDO
+               FROM =SOPDISVE
+               WHERE OPDI_CVE_OPER_ORIGEN     =:OPDI-CVE-OPER-ORIGEN
+                 AND OPDI_NUMF_SECUENCIA_OPER = 1
+              BROWSE ACCESS
+         END-EXEC
+         EXEC SQL
+              SELECT OPDI_CODN_CUS
+                    ,OPDI_CODN_EFE
+                    ,OPDI_CODN_TIPO_IMPORTE
+                    ,OPDI_CODN_MOVTO_EFECTIVO
+               INTO :OPDI-CODN-CUS
+                   ,:OPDI-CODN-EFE
+                   ,:OPDI-CODN-TIPO-IMPORTE
+                   ,:OPDI-CODN-MOVTO-EFECTIVO
+               FROM =SOPDISVE
+               WHERE OPDI_CVE_OPER_ORIGEN =:OPDI-CVE-OPER-ORIGEN
+                 AND OPDI_CVE_OPER_DISP   =:OPDI-CVE-OPER-DISP
+             BROWSE ACCESS
+         END-EXEC
+      ELSE
+         INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+         MOVE SQLCODE TO DSS-AV-ERROR
+         INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+             FOR LEADING SPACES
+         STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                SPACE
+               "SQLCODE:"
+                DSS-AV-ERROR(WSS-IND-EDI:)
+                SPACE
+               "Al leer la tabla: =STRANSAC"
+                DELIMITED BY SIZE
+           INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         ENTER TAL "SQLCADISPLAY" USING SQLCA
+         ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED , 1.
+
+ 9130-SELECT-SHISPREC.
+      SET WSS-EOT-SHISPREC-NO TO TRUE
+      EXEC SQL
+           SELECT HPRE_PREG_CIERRE INTO :HPRE-PREG-CIERRE
+            FROM =SHISPREC
+            WHERE HPRE_NUM_PRODUCTO = :HPRE-NUM-PRODUCTO
+              AND HPRE_FECH_CIERRE  = :HPRE-FECH-CIERRE
+           BROWSE ACCESS
+      END-EXEC.
+      IF SQLCODE NOT EQUAL TO ZERO
+         SET WSS-EOT-SHISPREC-SI TO TRUE
+         INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+         MOVE SQLCODE TO DSS-AV-ERROR
+         INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+             FOR LEADING SPACES
+         STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                SPACE
+               "SQLCODE:"
+                DSS-AV-ERROR(WSS-IND-EDI:)
+                SPACE
+               "Al leer la tabla: =SHISPREC"
+                DELIMITED BY SIZE
+           INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         ENTER TAL "SQLCADISPLAY" USING SQLCA
+         ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED , 1.
+
+ 9150-SELECT-STRAMCAP.
+       SET WSS-EOT-STRAMCAP-NO TO TRUE
+       EXEC SQL
+            SELECT TRMC_TIT_TRANSACCION
+                  ,TRMC_PREC_TRANSACCION
+             INTO :H-TIT-TRANSACCION
+                 ,:H-PREC-TRANSACCION
+             FROM =STRAMCAP
+            WHERE (TRMC_CVE_PARTICION,TRMC_NUMF_TRANSACCION)
+                 =(:TRMC-CVE-PARTICION,:TRMC-NUMF-TRANSACCION)
+            BROWSE ACCESS
+       END-EXEC.
+       IF SQLCODE NOT EQUAL TO ZERO
+          SET WSS-EOT-STRAMCAP-SI TO TRUE
+          IF SQLCODE NOT = 100
+             INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+             MOVE SQLCODE TO DSS-AV-ERROR
+             INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+                 FOR LEADING SPACES
+             STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                    SPACE
+                   "SQLCODE:"
+                    DSS-AV-ERROR(WSS-IND-EDI:)
+                    SPACE
+                   "Al leer la tabla: =STRAMCAP"
+                    DELIMITED BY SIZE
+               INTO WSS-ERR-MENSAJE
+             DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+             ENTER TAL "SQLCADISPLAY" USING SQLCA
+             ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED , 1.
+
+ 9160-FETCH-STRANSAC.
+      SET WSS-EOT-CUR-STRANSAC-NO TO TRUE
+      EXEC SQL FETCH CUR_STRANSAC
+           INTO :TRAN-NUMF-TRANSACCION
+      END-EXEC.
+      IF SQLCODE NOT = ZERO
+         SET WSS-EOT-CUR-STRANSAC-SI TO TRUE
+         IF SQLCODE NOT = 100
+            INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+            MOVE SQLCODE TO DSS-AV-ERROR
+            INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+                FOR LEADING SPACES
+            STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                   SPACE
+                  "SQLCODE:"
+                   DSS-AV-ERROR(WSS-IND-EDI:)
+                   SPACE
+                  "Al leer el cursor: CUR_STRANSAC"
+                   DELIMITED BY SIZE
+              INTO WSS-ERR-MENSAJE
+            DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+            ENTER TAL "SQLCADISPLAY" USING SQLCA
+            ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED, 1.
+
+  9180-SELECT-STRASOCI.
+      SET WSS-EOT-STRASOCI-NO TO TRUE
+      EXEC SQL
+            SELECT TRSI_TIT_TRANSACCION
+                  ,TRSI_PRES_TRANSACCION
+             INTO :H-TIT-TRANSACCION
+                 ,:H-PREC-TRANSACCION
+             FROM =STRASOCI
+            WHERE (TRSI_CVE_PARTICION,TRSI_NUMF_TRANSACCION)
+                 =(:TRSI-CVE-PARTICION,:TRSI-NUMF-TRANSACCION)
+            BROWSE ACCESS
+      END-EXEC.
+      IF SQLCODE NOT EQUAL TO ZERO
+         SET WSS-EOT-STRASOCI-SI TO TRUE
+         IF SQLCODE NOT = 100
+            INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+            MOVE SQLCODE TO DSS-AV-ERROR
+            INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+                FOR LEADING SPACES
+            STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                   SPACE
+                  "SQLCODE:"
+                   DSS-AV-ERROR(WSS-IND-EDI:)
+                   SPACE
+                  "Al leer la tabla: =STRASOCI"
+                   DELIMITED BY SIZE
+              INTO WSS-ERR-MENSAJE
+            DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+            ENTER TAL "SQLCADISPLAY" USING SQLCA
+            ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED , 1.
+
+  9200-SELECT-SPRODOPE.
+       SET WSS-EOT-SPRODOPE-NO TO TRUE
+       EXEC SQL
+             SELECT PROP_CVE_MERCADO
+                   ,PROP_CVE_INSTRUMENTO
+                   ,PROP_NUM_PRODUCTO
+              INTO :PROP-CVE-MERCADO
+                  ,:PROP-CVE-INSTRUMENTO
+                  ,:PROP-NUM-PRODUCTO
+              FROM =SPRODOPE
+              WHERE PROP_NUM_PRODUCTO = :PROP-NUM-PRODUCTO
+             BROWSE ACCESS
+       END-EXEC.
+       IF SQLCODE NOT EQUAL TO ZERO
+          SET WSS-EOT-SPRODOPE-SI TO TRUE
+          IF SQLCODE NOT = 100
+             INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+             MOVE SQLCODE TO DSS-AV-ERROR
+             INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+                 FOR LEADING SPACES
+             STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                    SPACE
+                   "SQLCODE:"
+                    DSS-AV-ERROR(WSS-IND-EDI:)
+                    SPACE
+                   "Al leer la tabla: =SPRODOPE"
+                    DELIMITED BY SIZE
+               INTO WSS-ERR-MENSAJE
+             DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+             ENTER TAL "SQLCADISPLAY" USING SQLCA
+             ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED , 1.
+
+ 9210-SELECT-SEMISORA.
+      SET WSS-EOT-SEMISORA-NO TO TRUE
+      EXEC SQL
+            SELECT UPPER(TRIM(EMIS_CVE_UNIDAD_VALUADORA))
+                  ,UPPER(TRIM(EMIS_CVE_TIPO_VALOR))
+                  ,UPPER(TRIM(EMIS_DESC_VALOR))
+                  ,UPPER(TRIM(EMIS_CVE_SERIE_VALOR))
+                  ,EMIS_FECH_EMISION
+                  ,EMIS_PREG_NOMINAL
+                  ,UPPER(TRIM(EMIS_BAND_COBRA_IMPUESTOS_RV))
+                  ,EMIS_PLZO_PAGO_CUPON_RF
+                  ,EMIS_PREG_NOMINAL_AJUSTADO_RF
+             INTO :EMIS-CVE-UNIDAD-VALUADORA
+                 ,:EMIS-CVE-TIPO-VALOR
+                 ,:EMIS-DESC-VALOR
+                 ,:EMIS-CVE-SERIE-VALOR
+                 ,:EMIS-FECH-EMISION
+                 ,:EMIS-PREG-NOMINAL
+                 ,:EMIS-BAND-COBRA-IMPUESTOS-RV
+                 ,:EMIS-PLZO-PAGO-CUPON-RF
+                 ,:EMIS-PREG-NOMINAL-AJUSTADO-RF
+             FROM =SEMISORA
+             WHERE EMIS_NUM_PRODUCTO = :EMIS-NUM-PRODUCTO
+            BROWSE ACCESS
+      END-EXEC.
+      IF SQLCODE NOT = ZERO
+         SET WSS-EOT-SEMISORA-NO TO TRUE
+         INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+         MOVE SQLCODE TO DSS-AV-ERROR
+         INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+             FOR LEADING SPACES
+         STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                SPACE
+               "SQLCODE:"
+                DSS-AV-ERROR(WSS-IND-EDI:)
+                SPACE
+               "Al leer la tabla: =SEMISORA"
+                DELIMITED BY SIZE
+           INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         ENTER TAL "SQLCADISPLAY" USING SQLCA
+         ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED , 1.
+
+ 9220-SELECT-STRAMDIN.
+      SET WSS-EOT-STRAMDIN-NO TO TRUE
+      EXEC SQL
+            SELECT TRMD_TIT_TRANSACCION
+                  ,TRMD_PRED_TRANSACCION
+                  ,TRMD_PLZO_DIAS
+                  ,TRMD_TASA_RENDIMIENTO
+                  ,TRMD_IMPO_PREMIO
+                  ,TRMD_IMPO_NETO
+             INTO :H-TIT-TRANSACCION
+                 ,:H-PREC-TRANSACCION
+                 ,:H-PLZO-DIAS
+                 ,:H-TASA-RENDIMIENTO
+                 ,:H-IMPO-PREMIO
+                 ,:H-IMPO-NETO
+             FROM =STRAMDIN
+            WHERE ( TRMD_CVE_PARTICION, TRMD_NUMF_TRANSACCION)
+                 =(:TRMD-CVE-PARTICION,:TRMD-NUMF-TRANSACCION)
+            BROWSE ACCESS
+      END-EXEC.
+      IF SQLCODE NOT EQUAL TO ZERO
+         SET WSS-EOT-STRAMDIN-SI TO TRUE
+         IF SQLCODE NOT = 100
+            INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+            MOVE SQLCODE TO DSS-AV-ERROR
+            INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+                FOR LEADING SPACES
+            STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                   SPACE
+                  "SQLCODE:"
+                   DSS-AV-ERROR(WSS-IND-EDI:)
+                   SPACE
+                  "Al leer la tabla: =STRAMDIN"
+                   DELIMITED BY SIZE
+              INTO WSS-ERR-MENSAJE
+            DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+            ENTER TAL "SQLCADISPLAY" USING SQLCA
+            ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED , 1.
+
+ 9230-SELECT-STRACONV.
+      SET WSS-EOT-STRACONV-NO TO TRUE
+      EXEC SQL
+            SELECT TRCV_CANTIDAD
+                  ,TRCV_IMPORTE
+             INTO :H-TIT-TRANSACCION
+                 ,:H-PREC-TRANSACCION
+             FROM =STRACONV
+            WHERE ( TRCV_CVE_PARTICION, TRCV_NUMF_TRANSACCION)
+                 =(:TRCV-CVE-PARTICION,:TRCV-NUMF-TRANSACCION)
+            BROWSE ACCESS
+      END-EXEC.
+      IF SQLCODE NOT EQUAL TO ZERO
+         SET WSS-EOT-STRACONV-SI TO TRUE
+         IF SQLCODE NOT = 100
+            INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+            MOVE SQLCODE TO DSS-AV-ERROR
+            INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+                FOR LEADING SPACES
+            STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                   SPACE
+                  "SQLCODE:"
+                   DSS-AV-ERROR(WSS-IND-EDI:)
+                   SPACE
+                  "Al leer la tabla: =STRACONV"
+                   DELIMITED BY SIZE
+              INTO WSS-ERR-MENSAJE
+            DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+            ENTER TAL "SQLCADISPLAY" USING SQLCA
+            ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED , 1.
+
+ 9240-SELECT-STRAVENT.
+      SET WSS-EOT-STRAVENT-NO TO TRUE
+      EXEC SQL
+            SELECT TRVE_CANTIDAD
+             INTO :H-TIT-TRANSACCION
+             FROM =STRAVENT
+            WHERE TRVE_NUMF_TRANSACCION
+                =:TRVE-NUMF-TRANSACCION
+            BROWSE ACCESS
+      END-EXEC.
+      IF SQLCODE NOT EQUAL TO ZERO
+         SET WSS-EOT-STRAVENT-SI TO TRUE
+         IF SQLCODE NOT = 100
+            INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+            MOVE SQLCODE TO DSS-AV-ERROR
+            INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+                FOR LEADING SPACES
+            STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                   SPACE
+                  "SQLCODE:"
+                   DSS-AV-ERROR(WSS-IND-EDI:)
+                   SPACE
+                  "Al leer la tabla: =STRAVENT"
+                   DELIMITED BY SIZE
+              INTO WSS-ERR-MENSAJE
+            DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+            ENTER TAL "SQLCADISPLAY" USING SQLCA
+            ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED , 1.
+
+ 9250-UPDATE-SREFISPR.
+      EXEC SQL
+           UPDATE =SREFISPR
+           SET
+            RFPR_IMPO_ENTRADAS             = :RFPR-IMPO-ENTRADAS
+           ,RFPR_IMPO_SALIDAS              = :RFPR-IMPO-SALIDAS
+           ,RFPR_IMPO_INT_NOMINAL_GRAVADO  = :RFPR-IMPO-INT-NOMINAL-GRAVADO
+           ,RFPR_IMPO_INT_REAL_GRAVADO     = :RFPR-IMPO-INT-REAL-GRAVADO
+           ,RFPR_IMPO_GAN_NOMINAL_GRAVADO  = :RFPR-IMPO-GAN-NOMINAL-GRAVADO
+           ,RFPR_IMPO_GAN_REAL_GRAVADO     = :RFPR-IMPO-GAN-REAL-GRAVADO
+           ,RFPR_IMPO_INT_NOMINAL_EXENTO   = :RFPR-IMPO-INT-NOMINAL-EXENTO
+           ,RFPR_IMPO_INT_REAL_EXENTO      = :RFPR-IMPO-INT-REAL-EXENTO
+           ,RFPR_IMPO_GAN_NOMINAL_EXENTO   = :RFPR-IMPO-GAN-NOMINAL-EXENTO
+           ,RFPR_IMPO_GAN_REAL_EXENTO      = :RFPR-IMPO-GAN-REAL-EXENTO
+           ,RFPR_IMPO_DIVIDENDOS_EXTR      = :RFPR-IMPO-DIVIDENDOS-EXTR
+           ,RFPR_IMPO_DIVIDENDOS_INTR      = :RFPR-IMPO-DIVIDENDOS-INTR
+           ,RFPR_IMPO_COMISIONES_RV        = :RFPR-IMPO-COMISIONES-RV
+           ,RFPR_IMPO_COSTO_PROMEDIO       = :RFPR-IMPO-COSTO-PROMEDIO
+           ,RFPR_IMPO_COSTO_PROM_AJUSTADO  = :RFPR-IMPO-COSTO-PROM-AJUSTADO
+           ,RFPR_IMPO_RETENCION            = :RFPR-IMPO-RETENCION
+           ,RFPR_TIT_TEMPORAL              = :RFPR-TIT-TEMPORAL
+           ,RFPR_FECH_ULT_MOVTO            = :RFPR-FECH-ULT-MOVTO
+         WHERE RFPR_ANIO_MES       = :RFPR-ANIO-MES
+           AND RFPR_NUM_CONTRATO   = :RFPR-NUM-CONTRATO
+           AND RFPR_NUM_PRODUCTO   = :RFPR-NUM-PRODUCTO
+           AND RFPR_CVE_TIPO_SALDO = :RFPR-CVE-TIPO-SALDO
+           FOR STABLE ACCESS
+      END-EXEC.
+      IF SQLCODE NOT = ZERO AND NOT = 100
+         INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+         MOVE SQLCODE TO DSS-AV-ERROR
+         INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+             FOR LEADING SPACES
+         STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                SPACE
+               "SQLCODE:"
+                DSS-AV-ERROR(WSS-IND-EDI:)
+                SPACE
+               "Al actualizar la tabla: =SREFISPR"
+                SPACE
+                DELIMITED BY SIZE
+           INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         ENTER TAL "SQLCADISPLAY" USING SQLCA
+         ENTER TAL "PROCESS_STOP_" USING OMITTED, OMITTED, 1.
+
+ 9260-SELECT-STRADEPA.
+      SET WSS-EOT-STRADEPA-NO TO TRUE
+      EXEC SQL
+            SELECT TRDP_TIT_O_CUPONES
+                  ,TRDP_PREG_TRANSACCION
+             INTO :H-TIT-TRANSACCION
+                 ,:H-PREC-TRANSACCION
+             FROM =STRADEPA
+            WHERE ( TRDP_CVE_PARTICION, TRDP_NUMF_TRANSACCION)
+                 =(:TRDP-CVE-PARTICION,:TRDP-NUMF-TRANSACCION)
+            BROWSE ACCESS
+      END-EXEC.
+      IF SQLCODE NOT EQUAL TO ZERO
+         SET WSS-EOT-STRADEPA-SI TO TRUE
+         IF SQLCODE NOT = 100
+            INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+            MOVE SQLCODE TO DSS-AV-ERROR
+            INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+                FOR LEADING SPACES
+            STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                   SPACE
+                  "SQLCODE:"
+                   DSS-AV-ERROR(WSS-IND-EDI:)
+                   SPACE
+                  "Al leer la tabla: =STRADEPA"
+                   DELIMITED BY SIZE
+              INTO WSS-ERR-MENSAJE
+            DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+            ENTER TAL "SQLCADISPLAY" USING SQLCA
+            ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED , 1.
+
+ 9270-FETCH-UPD-SREFISPR.
+      SET WSS-EOT-CUR-SREFISPR-NO TO TRUE
+      EXEC SQL FETCH CUR_UPD_SREFISPR
+           INTO
+                :RFPR-ANIO-MES
+               ,:RFPR-NUM-CONTRATO
+               ,:RFPR-NUM-PRODUCTO
+               ,:RFPR-CVE-TIPO-SALDO
+      END-EXEC.
+      IF SQLCODE NOT = ZERO
+         SET WSS-EOT-CUR-SREFISPR-SI TO TRUE
+         IF SQLCODE NOT = 100
+            INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+            MOVE SQLCODE TO DSS-AV-ERROR
+            INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+                FOR LEADING SPACES
+            STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                   SPACE
+                  "SQLCODE:"
+                   DSS-AV-ERROR(WSS-IND-EDI:)
+                   SPACE
+                  "Al leer el cursor: CUR_UPD_SREFISPR"
+                   DELIMITED BY SIZE
+              INTO WSS-ERR-MENSAJE
+            DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+            ENTER TAL "SQLCADISPLAY" USING SQLCA
+            ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED, 1.
+
+ 9290-FETCH-DEL-SREFISTR.
+      SET WSS-EOT-CUR-SREFISTR-NO TO TRUE
+      EXEC SQL FETCH CUR_DEL_SREFISTR
+           INTO :RFTR-NUMF-TRANSACCION
+      END-EXEC.
+      IF SQLCODE NOT = ZERO
+         SET WSS-EOT-CUR-SREFISTR-SI TO TRUE
+         IF SQLCODE NOT = 100
+            INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+            MOVE SQLCODE TO DSS-AV-ERROR
+            INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+                FOR LEADING SPACES
+            STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                   SPACE
+                  "SQLCODE:"
+                   DSS-AV-ERROR(WSS-IND-EDI:)
+                   SPACE
+                  "Al leer el cursor: CUR_DEL_SREFISTR"
+                   DELIMITED BY SIZE
+              INTO WSS-ERR-MENSAJE
+            DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+            ENTER TAL "SQLCADISPLAY" USING SQLCA
+            ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED, 1.
+
+ 9300-DELETE-SREFISTR.
+      EXEC SQL CONTROL TABLE =SREFISTR TABLELOCK OFF  END-EXEC.
+      EXEC SQL CONTROL TABLE =SREFISTR TIMEOUT -1     END-EXEC.
+      EXEC SQL CONTROL TABLE =SREFISTR WAIT IF LOCKED END-EXEC.
+      EXEC SQL
+           DELETE FROM =SREFISTR WHERE RFTR_NUMF_TRANSACCION=
+           :RFTR-NUMF-TRANSACCION
+      END-EXEC.
+      IF SQLCODE NOT = ZERO
+         INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+         MOVE SQLCODE TO DSS-AV-ERROR
+         INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+             FOR LEADING SPACES
+         STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                 SPACE
+                "SQLCODE:"
+                 DSS-AV-ERROR(WSS-IND-EDI:)
+                 SPACE
+                "Al borrar tabla: =SREFISTR"
+                 DELIMITED BY SIZE
+            INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         ENTER TAL "SQLCADISPLAY" USING SQLCA
+         ENTER TAL "PROCESS_STOP_" USING OMITTED, OMITTED, 1.
+
+ 9310-SELECT-SREFISPR.
+      SET WSS-EOT-SREFISPR-NO TO TRUE
+      EXEC SQL
+           SELECT RFPR_IMPO_COSTO_PROMEDIO
+                 ,RFPR_IMPO_COSTO_PROM_AJUSTADO
+                 ,RFPR_FECH_ULT_MOVTO
+            INTO :RFPR-IMPO-COSTO-PROMEDIO
+                ,:RFPR-IMPO-COSTO-PROM-AJUSTADO
+                ,:RFPR-FECH-ULT-MOVTO
+            FROM =SREFISPR
+            WHERE RFPR_ANIO_MES       = :RFPR-ANIO-MES
+              AND RFPR_NUM_CONTRATO   = :RFPR-NUM-CONTRATO
+              AND RFPR_NUM_PRODUCTO   = :RFPR-NUM-PRODUCTO
+              AND RFPR_CVE_TIPO_SALDO = :RFPR-CVE-TIPO-SALDO
+              FOR BROWSE ACCESS
+      END-EXEC.
+      IF SQLCODE NOT = ZERO
+           SET WSS-EOT-SREFISPR-SI TO TRUE
+           IF SQLCODE NOT = 100
+              SET WSS-EOT-SREFISRI-SI TO TRUE
+              INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+              MOVE SQLCODE TO DSS-AV-ERROR
+              INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+                  FOR LEADING SPACES
+              STRING "SQLCODE:"
+                      DSS-AV-ERROR(WSS-IND-EDI:)
+                      SPACE
+                     "Al leer la tabla: =SREFISPR"
+                      DELIMITED BY SIZE
+                 INTO WSS-ERR-MENSAJE
+              DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+              ENTER TAL "SQLCADISPLAY" USING SQLCA
+              ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED , 1.
+
+ 9390-SELECT-INT-DEVENGADOS.
+      EXEC SQL
+           SELECT SUM(TRAN_IMPO_TRANSACCION)
+            INTO :H-INT-DEVENGADOS
+            FROM =STRANSAC
+            WHERE TRAN_CODX_STATUS="ACTI"
+              AND TRAN_NUM_CONTRATO=:TRAN-NUM-CONTRATO
+              AND TRAN_NUM_PRODUCTO=:TRAN-NUM-PRODUCTO
+              AND TRAN_FECH_APLICACION
+          BETWEEN :H-FECH-A4MMDD-INI AND :H-FECH-A4MMDD-FIN
+              AND TRAN_NUMF_TRANS_GENERADORA = :TRAN-NUMF-TRANS-GENERADORA
+              AND TRAN_CVE_OPER IN ("INTIDVMC","INTIDCMC")
+           BROWSE ACCESS
+      END-EXEC.
+      IF SQLCODE NOT = ZERO AND
+         SQLCODE NOT = 100  AND
+         SQLCODE NOT = -8423
+         INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+         MOVE SQLCODE TO DSS-AV-ERROR
+         INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+             FOR LEADING SPACES
+         STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                SPACE
+               "SQLCODE:"
+                DSS-AV-ERROR(WSS-IND-EDI:)
+                SPACE
+               "Al leer la tabla: =STRANSAC"
+                DELIMITED BY SIZE
+           INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         ENTER TAL "SQLCADISPLAY" USING SQLCA
+         ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED , 1.
+
+ 9400-LEE-CARACTERISTICA.
+      CALL "LEE-CARACTERISTICAS"
+            USING LSS-CAR-PARN-ENTRADA
+                  LSS-CAR-PARN-SALIDA
+                  LSS-CAR-PARX-ERROR.
+      IF LSS-CAR-PARX-FUNCION NOT = ZERO AND
+         LSS-CAR-SQL-ERROR NOT = 100
+         MOVE LSS-CAR-PARX-MSG-ERROR-FUNC TO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED , 1.
+
+ 9410-SELECT-STRAPVAL.
+       SET WSS-EOT-STRAPVAL-NO TO TRUE
+       EXEC SQL
+            SELECT
+                  TPVA_TIT_PRESTAMO
+                 ,TPVA_TASA_PRESTAMO
+                 ,TPVA_TASA_SOBRETASA
+            INTO :H-TIT-TRANSACCION
+                ,:TPVA-TASA-PRESTAMO
+                ,:TPVA-TASA-SOBRETASA
+               FROM =STRAPVAL
+            WHERE (TPVA_CVE_PARTICION,TPVA_NUMF_TRANSACCION)
+                 =(:TPVA-CVE-PARTICION,:TPVA-NUMF-TRANSACCION)
+            BROWSE ACCESS
+       END-EXEC.
+       IF SQLCODE NOT EQUAL TO ZERO
+          SET WSS-EOT-STRAPVAL-SI TO TRUE
+          IF SQLCODE NOT = 100
+             INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+             MOVE SQLCODE TO DSS-AV-ERROR
+             INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+                 FOR LEADING SPACES
+             STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                    SPACE
+                   "SQLCODE:"
+                    DSS-AV-ERROR(WSS-IND-EDI:)
+                    SPACE
+                   "Al leer la tabla: =STRAPVAL"
+                    DELIMITED BY SIZE
+               INTO WSS-ERR-MENSAJE
+             DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+             ENTER TAL "SQLCADISPLAY" USING SQLCA
+             ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED , 1.
+
+ 9420-SELECT-SPRESTAM.
+       SET WSS-EOT-SPRESTAM-NO TO TRUE
+       EXEC SQL
+            SELECT
+                  PRES_FECH_CONCERTACION
+                 ,PRES_FECH_ASIGNACION
+                 ,PRES_FECH_LIQUIDACION_REAL
+                 ,PRES_FECH_LIQUIDACION_ORIG
+                 ,PRES_FECH_CANCELACION
+                 ,PRES_FECH_INCUMPLIMIENTO
+                 ,PRES_FECH_SOLICITUD_PREVENCE
+                 ,PRES_FECH_SOLICITUD_PRORROGA
+             INTO
+                 :PRES-FECH-CONCERTACION
+                ,:PRES-FECH-ASIGNACION
+                ,:PRES-FECH-LIQUIDACION-REAL
+                ,:PRES-FECH-LIQUIDACION-ORIG
+                ,:PRES-FECH-CANCELACION
+                ,:PRES-FECH-INCUMPLIMIENTO
+                ,:PRES-FECH-SOLICITUD-PREVENCE
+                ,:PRES-FECH-SOLICITUD-PRORROGA
+             FROM =SPRESTAM
+             WHERE PRES_NUMF_PRESTAMO
+                 =:PRES-NUMF-PRESTAMO
+            BROWSE ACCESS
+       END-EXEC.
+       IF SQLCODE NOT EQUAL TO ZERO
+          SET WSS-EOT-SPRESTAM-SI TO TRUE
+          IF SQLCODE NOT = 100
+             INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+             MOVE SQLCODE TO DSS-AV-ERROR
+             INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+                 FOR LEADING SPACES
+             STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                    SPACE
+                   "SQLCODE:"
+                    DSS-AV-ERROR(WSS-IND-EDI:)
+                    SPACE
+                   "Al leer la tabla: =SPRESTAM"
+                    DELIMITED BY SIZE
+               INTO WSS-ERR-MENSAJE
+             DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+             ENTER TAL "SQLCADISPLAY" USING SQLCA
+             ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED , 1.
+
+ 9430-select-SCARXCTO.
+      EXEC SQL
+           SELECT CASE WHEN CCTO_CANT_PORC_CARGO=0 THEN 0 ELSE 1 END
+            INTO :CCTO-CANT-PORC-CARGO
+            FROM =SCARXCTO
+            WHERE CCTO_NUM_CONTRATO=:CCTO-NUM-CONTRATO
+              AND CCTO_CVE_CARGO=:CCTO-CVE-CARGO
+            BROWSE ACCESS
+      END-EXEC
+      IF SQLCODE NOT = ZERO AND
+         SQLCODE NOT = 100  AND
+         SQLCODE NOT = -8423
+         INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+         MOVE SQLCODE TO DSS-AV-ERROR
+         INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+             FOR LEADING SPACES
+         STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                SPACE
+               "SQLCODE:"
+                DSS-AV-ERROR(WSS-IND-EDI:)
+                SPACE
+               "Al leer la tabla: =SCARXCTO"
+                DELIMITED BY SIZE
+           INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         ENTER TAL "SQLCADISPLAY" USING SQLCA
+         ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED , 1.
+
+ 9440-select-SCONTRAT.
+      EXEC SQL
+           SELECT CASE WHEN UPPER(TRIM(CLTE_CVE_ROL_CONTRATO))
+                  IN ("FIDU","FIHI")
+                    OR CONT_NUM_USO_CONTRATO IN (2,3,4,9)
+                       THEN 0 ELSE 1 END
+            INTO :CCTO-CANT-PORC-CARGO
+            FROM =SCONTRAT
+            LEFT JOIN =SCLIENTE ON
+                 (CONT_NUM_CONTRATO,CONT_NUM_PERSONA_PRIMER_TIT)
+                =(CLTE_NUM_CONTRATO,CLTE_NUM_PERSONA)
+            WHERE CONT_NUM_CONTRATO=:CONT-NUM-CONTRATO
+            BROWSE ACCESS
+      END-EXEC
+      IF SQLCODE NOT = ZERO AND
+         SQLCODE NOT = 100  AND
+         SQLCODE NOT = -8423
+         INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+         MOVE SQLCODE TO DSS-AV-ERROR
+         INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+             FOR LEADING SPACES
+         STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                SPACE
+               "SQLCODE:"
+                DSS-AV-ERROR(WSS-IND-EDI:)
+                SPACE
+               "Al leer la tabla: =SCONTRAT|=SCLIENTE"
+                DELIMITED BY SIZE
+           INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         ENTER TAL "SQLCADISPLAY" USING SQLCA
+         ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED , 1.
+
+ 9450-select-SHISPOSI.
+      SET WSS-EOT-SHISPOSI-NO TO TRUE
+      initialize HPOS-SLDO-TIT-INICIAL
+      EXEC SQL
+           SELECT SUM(HPOS_SLDO_TIT_INICIAL
+                     +HPOS_TIT_ENTRADA
+                     -HPOS_TIT_SALIDA)
+            INTO :HPOS-SLDO-TIT-INICIAL
+            FROM =SHISPOSI
+       LEFT JOIN =SPRODOPE ON HPOS_NUM_PRODUCTO=PROP_NUM_PRODUCTO
+       LEFT JOIN =SCONGARA ON HPOS_CVE_TIPO_SALDO=COGA_CVE_CONCEPTO
+            WHERE HPOS_FECH_POSICION = :HPOS-FECH-POSICION
+            AND ( HPOS_CVE_TIPO_SALDO=
+             CASE WHEN PROP_CVE_MERCADO="MCAP" THEN "DISP" ELSE "DIRE" END
+               OR COGA_CVE_CONCEPTO IS NOT NULL )
+              AND HPOS_CVE_TIPO_SALDO <> "GCOE"
+              AND HPOS_NUM_CONTRATO=:HPOS-NUM-CONTRATO
+              AND HPOS_NUM_PRODUCTO=:HPOS-NUM-PRODUCTO
+           BROWSE ACCESS
+      END-EXEC
+      IF SQLCODE NOT = ZERO AND
+         SQLCODE NOT = 100  AND
+         SQLCODE NOT = -8423
+         SET WSS-EOT-SHISPOSI-SI TO TRUE
+         INITIALIZE WSS-ERR-MENSAJE WSS-IND-EDI
+         MOVE SQLCODE TO DSS-AV-ERROR
+         INSPECT DSS-AV-ERROR TALLYING WSS-IND-EDI
+             FOR LEADING SPACES
+         STRING WSS-ERR-PROGRAMA DELIMITED BY SPACE
+                SPACE
+               "SQLCODE:"
+                DSS-AV-ERROR(WSS-IND-EDI:)
+                SPACE
+               "Al leer la tabla: =SHISPOSI"
+                DELIMITED BY SIZE
+           INTO WSS-ERR-MENSAJE
+         DISPLAY WSS-ERR-MENSAJE UPON HOME-TERM
+         ENTER TAL "SQLCADISPLAY" USING SQLCA
+         ENTER TAL "PROCESS_STOP_" USING OMITTED , OMITTED , 1.

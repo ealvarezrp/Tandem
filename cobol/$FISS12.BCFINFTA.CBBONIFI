@@ -1,0 +1,279 @@
+?SUPPRESS
+?ENV COMMON;HIGHPIN;HIGHREQUESTERS;RUNNAMED;COMPACT;SAVEABEND
+?SYMBOLS
+?SAVE PARAM
+?INSPECT
+?CHECK 3
+?SQL (RELEASE2,PAGES 600); SQLMEM EXT
+*******************************************************************
+* MODO DE OPERACION: Batch                                        *
+*                                                                 *
+* FUNCION:                                                        *
+*                                                                 *
+*   Batch encargado de acumular los conceptos de BONIFICACIOES    *
+*   de ISR                                                        *
+*                                                                 *
+*   INPUT:  STRANSAC                                              *
+*   OUTPUT: SREFISBO                                              *
+*                                                                 *
+*******************************************************************
+
+*******************************************************************
+*                ===== IDENTIFICATION DIVISION =====              *
+*******************************************************************
+ IDENTIFICATION  DIVISION.
+ PROGRAM-ID.     CBBONIFI.
+ AUTHOR.         ASISTICA (FELIX NEVAREZ).
+
+*******************************************************************
+*                ===== ENVIRONMENT DIVISION =====                 *
+*******************************************************************
+ ENVIRONMENT      DIVISION.
+ CONFIGURATION    SECTION.
+ SPECIAL-NAMES.
+    FILE #TERM                     IS HOME-TERM
+    FILE $CYC01.INFROJA0.LTALLIB   IS LTAL-LIB
+    FILE $SYSTEM.SYSTEM.COBOLLIB   IS COBOL-LIB.
+
+**********************************************************************
+*                   ===== DATA DIVISION =====                        *
+**********************************************************************
+ INPUT-OUTPUT SECTION.
+ FILE-CONTROL.
+
+**********************************************************************
+*                   ===== DATA DIVISION =====                        *
+**********************************************************************
+ DATA DIVISION.
+ FILE SECTION.
+
+ WORKING-STORAGE SECTION.
+
+ EXEC SQL INCLUDE SQLCA                       END-EXEC.
+ EXEC SQL INCLUDE SQLSA                       END-EXEC.
+ EXEC SQL BEGIN DECLARE SECTION               END-EXEC.
+    EXEC SQL INVOKE =STRANSAC AS STRANSAC-REG END-EXEC.
+    EXEC SQL INVOKE =SREFISBO AS SREFISBO-REG END-EXEC.
+    01 H-FECH-INI PIC 9(08) COMP.
+    01 H-FECH-FIN PIC 9(08) COMP.
+    01 H-ANIO-MES PIC 9(06) COMP.
+    01 H-ANIO     PIC 9(04) COMP.
+    01 H-IMPO-BONIFICACION PIC S9(16)V9(2) COMP.
+ EXEC SQL END DECLARE SECTION                 END-EXEC.
+
+ EXEC SQL DECLARE CUR_STRANSAC CURSOR FOR
+        SELECT CAST(TRAN_FECH_APLICACION / 100 AS NUMERIC(6,0))
+            ,TRAN_NUM_CONTRATO
+            ,TRAN_NUM_PRODUCTO
+            ,SUM(TRAN_IMPO_TRANSACCION * OPDI_CODN_EFE)
+        FROM =STRANSAC
+        LEFT JOIN =SOPDISVE ON (TRAN_CVE_OPER,1)
+                              =(OPDI_CVE_OPER_ORIGEN,OPDI_NUMF_SECUENCIA_OPER)
+        WHERE TRAN_CVE_OPER IN ("BONIIMPU","IMPUISR")
+        AND TRAN_CODX_STATUS = "ACTI"
+        AND TRAN_FECH_APLICACION BETWEEN :H-FECH-INI AND :H-FECH-FIN
+        AND TRAN_NUM_PRODUCTO = 0
+        GROUP BY 1, 2, 3
+        BROWSE ACCESS
+ END-EXEC.
+
+ EXEC SQL DECLARE CUR_SREFISBO CURSOR FOR
+      SELECT
+        CAST(RFBO_ANIO_MES/100 AS NUMERIC(4,0)) * 100
+              , RFBO_NUM_CONTRATO
+              , RFBO_NUM_PRODUCTO
+              , RFBO_CVE_TIPO_SALDO
+              , RFBO_CVE_TIPO_VALOR
+              , SUM(RFBO_IMPO_BONIFICACION)
+      FROM =SREFISBO
+        WHERE CAST(RFBO_ANIO_MES/100 AS NUMERIC(4,0)) = :H-ANIO
+        AND RFBO_ANIO_MES <> CAST(RFBO_ANIO_MES/100 AS NUMERIC(4,0)) * 100
+      GROUP BY 1, 2, 3, 4, 5
+      BROWSE ACCESS
+ END-EXEC.
+
+**  BANDERAS
+ 01 WSS-BANDERAS.
+    03 WSS-EOT-TABLA               PIC  X(01).
+       88 WSS-EOT-TABLA-SI                          VALUE "S".
+       88 WSS-EOT-TABLA-NO                          VALUE "N".
+
+*** GENERALES
+ 01 WSS-PROG-ID                    PIC  X(13)       VALUE "<<CBBONIFI>> ".
+
+ 01 WSS-ERROR PIC 9(04) COMP.
+
+ 01 WSS-PARAM  PIC  X(05) VALUE "FECHA".
+ 01 WSS-RESULT PIC S9(4) COMP.
+
+ 01 WSS-PARAM-TXT-FECHA PIC X(08).
+ 01 FILLER REDEFINES WSS-PARAM-TXT-FECHA.
+    03 WSS-PARAM-NUM-FECHA PIC 9(08).
+
+ 01 WSS-FECHA-ED.
+   02 WSS-FECHA                                    PIC  9(08).
+   02 FILLER REDEFINES WSS-FECHA.
+      03 WSS-YEAR-MONTH                            PIC  9(06).
+      03 FILLER REDEFINES WSS-YEAR-MONTH.
+         04 WSS-YYYY                               PIC  9(04).
+         04 WSS-MM                                 PIC  9(02).
+      03 WSS-DD                                    PIC  9(02).
+
+ PROCEDURE DIVISION.
+
+ MAIN.
+    PERFORM INICIO
+    PERFORM PROCESO
+    PERFORM ACUMULA-ANUAL
+    PERFORM FIN-PROCESO
+    STOP RUN.
+
+ ACUMULA-ANUAL.
+    MOVE WSS-YYYY TO H-ANIO
+    PERFORM 9000-OPEN-SREFISBO.
+    MOVE "N" TO WSS-EOT-TABLA
+    ENTER BEGINTRANSACTION
+    PERFORM CICLO-SREFISBO UNTIL WSS-EOT-TABLA-SI
+    IF WSS-ERROR = ZEROES
+        ENTER ENDTRANSACTION
+    ELSE
+        ENTER ABORTTRANSACTION
+    END-IF.
+    EXEC SQL CLOSE CUR_SREFISBO END-EXEC.
+
+ 9000-OPEN-SREFISBO.
+    EXEC SQL OPEN CUR_SREFISBO END-EXEC.
+    IF SQLCODE NOT = ZEROES
+        DISPLAY "ERROR EN OPEN-SREFISBO"
+        ENTER ABEND.
+
+ CICLO-SREFISBO.
+    PERFORM 9000-FETCH-SREFISBO
+    IF WSS-EOT-TABLA-NO
+        PERFORM 9000-INSERT-SREFISBO
+        IF WSS-ERROR = ZEROES
+            IF SQLCODE = -8227
+                PERFORM 9000-UPDATE-SREFISBO
+            END-IF
+        END-IF
+    END-IF.
+
+ 9000-FETCH-SREFISBO.
+    MOVE "N" TO WSS-EOT-TABLA
+    EXEC SQL
+        FETCH CUR_SREFISBO
+        INTO :RFBO-ANIO-MES
+            ,:RFBO-NUM-CONTRATO
+            ,:RFBO-NUM-PRODUCTO
+            ,:RFBO-CVE-TIPO-SALDO
+            ,:RFBO-CVE-TIPO-VALOR
+            ,:RFBO-IMPO-BONIFICACION
+    END-EXEC.
+    IF SQLCODE NOT = ZEROES
+        MOVE "S" TO WSS-EOT-TABLA
+        IF SQLCODE NOT = 100
+            DISPLAY "ERROR EN FETCH-SREFISBO"
+            ENTER ABEND.
+
+
+ INICIO.
+    INITIALIZE WSS-ERROR
+    PERFORM OBTIENE-PARAMETROS
+    DISPLAY WSS-PROG-ID "INICIA PROCESO DE BONIFICACIONES".
+
+ OBTIENE-PARAMETROS.
+      ENTER "GETPARAMTEXT" OF COBOL-LIB USING WSS-PARAM, WSS-PARAM-TXT-FECHA
+                                       GIVING WSS-RESULT
+      IF WSS-RESULT < 1
+         DISPLAY WSS-PROG-ID "PARAMETRO FECHA INEXISTENTE, EJECUTAR MACRO TMCARDEF"
+         ENTER ABEND
+      ELSE
+         MOVE WSS-PARAM-NUM-FECHA TO H-FECH-FIN WSS-FECHA
+         MOVE "01"                TO WSS-DD
+         MOVE WSS-FECHA           TO H-FECH-INI
+      END-IF.
+
+ FIN-PROCESO.
+    DISPLAY WSS-PROG-ID "TERMINA PROCESO DE BONIFICACIONES".
+
+ PROCESO.
+    PERFORM 9000-OPEN-STRANSAC.
+    MOVE "N" TO WSS-EOT-TABLA
+    ENTER BEGINTRANSACTION
+    PERFORM CICLO UNTIL WSS-EOT-TABLA-SI
+    IF WSS-ERROR = ZEROES
+        ENTER ENDTRANSACTION
+    ELSE
+        ENTER ABORTTRANSACTION
+    END-IF.
+    EXEC SQL CLOSE CUR_STRANSAC END-EXEC.
+
+ 9000-OPEN-STRANSAC.
+    EXEC SQL OPEN CUR_STRANSAC END-EXEC.
+    IF SQLCODE NOT = ZEROES
+        DISPLAY "ERROR EN OPEN-STRANSAC"
+        ENTER ABEND.
+
+ CICLO.
+    PERFORM 9000-FETCH-STRANSAC
+    IF WSS-EOT-TABLA-NO
+        INITIALIZE SREFISBO-REG
+        MOVE H-ANIO-MES             TO RFBO-ANIO-MES
+        MOVE TRAN-NUM-CONTRATO      TO RFBO-NUM-CONTRATO
+        MOVE TRAN-NUM-PRODUCTO      TO RFBO-NUM-PRODUCTO
+        MOVE "DISP"                 TO RFBO-CVE-TIPO-SALDO
+        MOVE H-IMPO-BONIFICACION    TO RFBO-IMPO-BONIFICACION
+        PERFORM 9000-INSERT-SREFISBO
+        IF WSS-ERROR = ZEROES
+            IF SQLCODE = -8227
+                PERFORM 9000-UPDATE-SREFISBO
+            END-IF
+        END-IF
+    END-IF.
+
+ 9000-INSERT-SREFISBO.
+    EXEC SQL
+        INSERT INTO =SREFISBO
+        VALUES
+            (:RFBO-ANIO-MES
+            ,:RFBO-NUM-CONTRATO
+            ,:RFBO-NUM-PRODUCTO
+            ,:RFBO-CVE-TIPO-SALDO
+            ,:RFBO-CVE-TIPO-VALOR
+            ,:RFBO-IMPO-BONIFICACION)
+        STABLE ACCESS
+    END-EXEC.
+    IF SQLCODE NOT = ZEROES AND NOT = -8227
+        DISPLAY "ERROR EN INSERT-SREFISBO"
+        ENTER ABEND.
+
+ 9000-UPDATE-SREFISBO.
+    EXEC SQL
+        UPDATE =SREFISBO
+            SET RFBO_IMPO_BONIFICACION = :RFBO-IMPO-BONIFICACION
+        WHERE RFBO_ANIO_MES       = :RFBO-ANIO-MES
+          AND RFBO_NUM_CONTRATO   = :RFBO-NUM-CONTRATO
+          AND RFBO_NUM_PRODUCTO   = :RFBO-NUM-PRODUCTO
+          AND RFBO_CVE_TIPO_SALDO = :RFBO-CVE-TIPO-SALDO
+          AND RFBO_CVE_TIPO_VALOR = :RFBO-CVE-TIPO-VALOR
+        STABLE ACCESS
+    END-EXEC.
+    IF SQLCODE NOT = ZEROES
+        DISPLAY "ERROR EN UPDATE-SREFISBO"
+        ENTER ABEND.
+
+ 9000-FETCH-STRANSAC.
+    MOVE "N" TO WSS-EOT-TABLA
+    EXEC SQL
+        FETCH CUR_STRANSAC
+        INTO :H-ANIO-MES
+            ,:TRAN-NUM-CONTRATO
+            ,:TRAN-NUM-PRODUCTO
+            ,:H-IMPO-BONIFICACION
+    END-EXEC.
+    IF SQLCODE NOT = ZEROES
+        MOVE "S" TO WSS-EOT-TABLA
+        IF SQLCODE NOT = 100
+            DISPLAY "ERROR EN FETCH-STRANSAC"
+            ENTER ABEND.
+

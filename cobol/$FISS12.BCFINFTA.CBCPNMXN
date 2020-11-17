@@ -1,0 +1,2298 @@
+?SUPPRESS
+* 20151126 FELIX NEVAREZ (ASISTICA
+* SE AGREGA LA CLAVE IMPUINEF
+*
+*  Version 13.0.001,   73084 Bytes: codename Nabucodonosor
+*  Oct 23, 2015
+*
+*  New:
+*    - Income(1) is determined to be taxable depending on the type of the
+*      financial instrument and the type of the investor(2).
+*    - Adjusted transaction precedence rules.
+*    - Additional data to the per-transaction info: Costs, Order id & Date of
+*      last movement.
+*    - REIT securities are now excluded from being processed.
+*
+*  Fixed:
+*    - Bug fixes & improvements
+
+?HEADING "Proceso fiscal de ingresos por inversion en instrumentos cuponados"
+?ENV COMMON;RUNNAMED;COMPACT;SYMBOLS;INSPECT;SAVE ALL;SAVEABEND
+?SQL (RELEASE2,PAGES 700);SQLMEM EXT
+?SEARCH $SYSTEM.SYSTEM.COBOLLIB
+?SEARCH $SYSTEM.SYSTEM.CLULIB
+?SEARCH $SYSTEM.SYSTEM.CBL85UTL
+?SEARCH $DCYC01.INFROJA0.LTALLIB
+?SEARCH $DCYC01.EOPACOJA.CFFECHAS
+?OPTIMIZE 2;NOWARN
+
+ IDENTIFICATION DIVISION.
+ PROGRAM-ID. Procesa-Derechos-MXN.
+
+ ENVIRONMENT DIVISION.
+ CONFIGURATION SECTION.
+ SPECIAL-NAMES.
+    file "#TERM" is HOME-TERM
+    class NUMERO is "0123456789. "
+    class OPERATIONAL-SIGN "+-"
+    class INSERTION-SYMBOL is "~"
+    DECIMAL-POINT is COMMA
+    switch-1 is ECHO       ON status is ECHOED
+    switch-4 is STATISTICS ON status is STATS-DISPLAYED
+    switch-2 is ERRORSTOP  ON status is STOP-AT-ERROR
+    switch-5 is REFRESH    ON status is AUTOREFRESH
+    switch-3 is TRACE      ON status is MESSAGE-TRACED
+    switch-6 is SECURE     ON status is ADMISSION-OPEN
+                          OFF status is ADMISSION-CONTROLLED
+    switch-7 is INVERTIR   ON status is INVERTIDAS.
+ DATA DIVISION.
+ WORKING-STORAGE SECTION.
+
+ EXEC SQL INCLUDE SQLCA                    END-EXEC.
+ EXEC SQL INCLUDE SQLSA                    END-EXEC.
+ EXEC SQL BEGIN DECLARE SECTION            END-EXEC.
+ 01 I-INDICATOR-VARIABLES.
+      02 I-POSC-NUM-PRODUCTO PIC S9(4) COMP.
+      02 I-INDICATOR-OPDISVE PIC S9(4) COMP.
+ EXEC SQL INVOKE =STRAPASO AS STRAPASO-REC END-EXEC
+ EXEC SQL INVOKE =STRANSAC AS STRANSAC-REC END-EXEC
+ EXEC SQL INVOKE =STRACOMP AS STRACOMP-REC END-EXEC
+ EXEC SQL INVOKE =SREFISTR AS SREFISTR-REC END-EXEC
+ EXEC SQL INVOKE =SREFISTC AS SREFISTC-REC END-EXEC.
+ EXEC SQL INVOKE =SREFISSA AS SREFISSA-REC END-EXEC
+ EXEC SQL INVOKE =SREFISPR AS SREFISPR-REC END-EXEC
+ EXEC SQL INVOKE =SPRODOPE AS SPRODOPE-REC END-EXEC
+ EXEC SQL INVOKE =SPACUPON AS SPACUPON-REC END-EXEC
+ EXEC SQL INVOKE =SOPDISVE AS SOPDISVE-REC END-EXEC
+ EXEC SQL INVOKE =SHISTUNI AS SHISTUNI-REC END-EXEC
+ EXEC SQL INVOKE =SEMISORA AS SEMISORA-REC END-EXEC
+ EXEC SQL INVOKE =SEMICPON AS SEMICPON-REC END-EXEC
+ EXEC SQL INVOKE =SCTOCPON AS SCTOCPON-REC END-EXEC
+ EXEC SQL INVOKE =SCONTRAT AS SCONTRAT-REC END-EXEC
+ EXEC SQL INVOKE =SCLIENTE AS SCLIENTE-REC END-EXEC
+ EXEC SQL INVOKE =SCARXCTO AS SCARXCTO-REC END-EXEC
+ 01 H-HOST-VARIABLES.
+    02 H-FECH-SISTEMA                      PIC 9(8).
+    02 H-FECH-INI                          PIC 9(8) COMP.
+    02 H-FECH-FIN                          PIC 9(8) COMP.
+    02 H-TRAN-NUM-PRODUCTO-ANT             PIC 9(9) COMP.
+    02 H-TRAN-FECH-APLICACION-ANT          PIC 9(8).
+    02 H-I                                 PIC 9(8) COMP.
+    02 H-F                                 PIC 9(8) COMP.
+    02 H-TIT-TRANSACCION                   PIC S9(18) COMP.
+    02 H-PREC-TRANSACCION                  PIC S9(7)V9(8) COMP.
+    02 H-PLZO-DIAS                         PIC S9(4) COMP.
+    02 H-TASA-RENDIMIENTO                  PIC S9(4)V9(8) COMP.
+    02 H-IMPO-PREMIO                       PIC S9(16)V9(2) COMP.
+    02 H-IMPO-NETO                         PIC S9(16)V9(2) COMP.
+    02 H-INT-DEVENGADOS                    PIC S9(16)V9(2) COMP.
+    02 H-COCIENTE-IND                      PIC S9(10)V9(8) COMP.
+    02 H-COSTO-UNITARIO                    PIC S9(10)V9(8) COMP.
+    02 H-PREG-IND-F                        PIC S9(10)V9(8) COMP.
+    02 H-PREG-IND-I                        PIC S9(10)V9(8) COMP.
+    02 H-FECH-INICIAL                      PIC 9(8) COMP.
+    02 H-FECH-FINAL                        PIC 9(8) COMP.
+    02 H-NUM-CONTRATO-I                    PIC 9(9) COMP.
+    02 H-NUM-PRODUCTO-I                    PIC 9(9) COMP.
+    02 H-NUM-CONTRATO-F                    PIC 9(9) COMP.
+    02 H-NUM-PRODUCTO-F                    PIC 9(9) COMP.
+    02 H-IMPO-TRANSACCION                  PIC S9(16)V9(2) VALUE 0 COMP.
+    02 H-IMPO-TRANSACCION-UDI              PIC S9(16)V9(2) VALUE 0 COMP.
+    02 H-TOTAL-PAGOS                       PIC S9(18) COMP.
+    02 H-TITULOS                           PIC S9(18) COMP.
+    02 H-FECH-INI-AAAAMM                   PIC 9(6).
+    02 H-RFPR-ANIO-MES                     PIC S9(6) VALUE ZERO COMP.
+    02 H-RFPR-ANIO-MES-ANT                 PIC S9(6) VALUE ZERO COMP.
+    02 H-CVE-OPER                          PIC  X(08).
+    02 H-CODN-TIPO-IMPORTE                 PIC S9(05) COMP.
+    02 H-INDICATOR                         PIC S9(04) COMP.
+    02 H-FECH-PAGO-CUPON                   PIC S9(08) COMP.
+    02 H-FECH-COMPRA-ORIGEN                PIC S9(08) COMP.
+    02 H-FECH-ENTRADA                      PIC S9(08) COMP.
+
+ EXEC SQL END DECLARE SECTION              END-EXEC.
+ EXEC SQL DECLARE CUR_CTOCPON CURSOR FOR
+       SELECT TPON_NUM_CONTRATO
+             ,TPON_NUM_PRODUCTO
+             ,TPON_ANIO_MES
+             ,TPON_TIT_INICIAL
+             ,TPON_TIT_FINAL
+             ,TPON_IMPO_COSTO_PROMEDIO
+             ,TPON_IMPO_COSTO_PROM_AJUSTADO
+             ,TPON_FECH_ULT_MOVTO
+             ,EPON_BAND_COBRA_IMPUESTOS_RV
+             ,EPON_FECH_EMISION
+             ,EPON_FECH_VENCIMIENTO_RF
+             ,EPON_PLZO_PAGO_CUPON_RF
+             ,EPON_CVE_TIPO_VALOR
+             ,EPON_CVE_UNIDAD_VALUADORA
+             ,A.PROP_CVE_MERCADO
+        FROM =SCTOCPON
+              JOIN =SEMICPON   ON TPON_NUM_PRODUCTO=EPON_NUM_PRODUCTO
+         JOIN =STRAPASO ON (TPON_NUM_CONTRATO,TPON_NUM_PRODUCTO,:TRAS-CODX-TIPO-TRASPASO)
+                        =  (TRAS_NUM_CONTRATO,TRAS_NUM_PRODUCTO,TRAS_CODX_TIPO_TRASPASO)
+         LEFT JOIN =SPRODOPE A ON EPON_NUM_PRODUCTO=A.PROP_NUM_PRODUCTO
+         LEFT JOIN =SPRODOPE SIC1
+           ON ("BMV","MCAP","1",A.PROP_NUM_PRODUCTO)
+             =(SIC1.PROP_CVE_BOLSA
+              ,SIC1.PROP_CVE_MERCADO
+              ,SIC1.PROP_CVE_INSTRUMENTO
+              ,SIC1.PROP_NUM_PRODUCTO)
+    WHERE
+             ((TPON_NUM_CONTRATO,TPON_NUM_PRODUCTO)
+             >(:H-NUM-CONTRATO-I,:H-NUM-PRODUCTO-I)
+          AND (TPON_NUM_CONTRATO,TPON_NUM_PRODUCTO)
+            <=(:H-NUM-CONTRATO-F,:H-NUM-PRODUCTO-F))
+          AND
+             ((A.PROP_CVE_INSTRUMENTO="SIC"
+        AND SIC1.PROP_CVE_BOLSA IS NULL)
+           OR (A.PROP_CVE_INSTRUMENTO<>"SIC" ))
+        AND EPON_CVE_UNIDAD_VALUADORA <> "UDI"
+     ORDER BY TPON_NUM_CONTRATO,TPON_NUM_PRODUCTO
+     BROWSE ACCESS
+ END-EXEC.
+
+ EXEC SQL DECLARE CUR_CVREFIS CURSOR FOR
+               SELECT RFTR_FECH_FIN_OPERACION
+                     ,CASE WHEN RFTR_CVE_OPER="IMPUDEPA"
+                             OR RFTR_CVE_OPER="RETEIMPU"  THEN 1
+                           WHEN RFTR_CVE_OPER="AMORPACA"  THEN 3
+                           WHEN OPDI_CODN_TIPO_IMPORTE=4
+                            AND OPDI_CODN_CUS=0
+                            AND OPDI_CODN_EFE=1
+                            AND RFTR_CVE_OPER<>"AMORPACA" THEN 2
+                           WHEN RFTR_CVE_OPER="AMORDEPP"
+                             OR RFTR_CVE_OPER="AMORPATI"
+                             OR RFTR_CVE_OPER="AMORTIZA"  THEN 9
+                           ELSE 4 END
+                    ,RFTR_NUMF_TRANSACCION
+                    ,RFTR_CVE_OPER
+                    ,RFTR_IMPO_TRANSACCION
+                    ,RFTR_CVE_TIPO_TRANSACCION
+                    ,OPDI_CODN_TIPO_IMPORTE
+                    ,OPDI_CODN_CUS
+                    ,OPDI_CODN_EFE
+                    ,RFTR_FECH_INI_OPERACION
+                    ,CASE WHEN RFTR_TIT_TRANSACCION = 0
+                          THEN CASE WHEN TRCO_TIT_TRANSACCION IS NULL
+                          THEN 0 ELSE TRCO_TIT_TRANSACCION END
+                          ELSE RFTR_TIT_TRANSACCION
+                     END
+                    ,RFTR_PRECIO
+                    ,RFTR_CVE_TIPO_VALOR
+                    ,RFTR_TASA_INT_PROM_NOMINAL
+                FROM =SREFISTR
+           LEFT JOIN =SOPDISVE ON (RFTR_CVE_OPER,1)
+                     =(OPDI_CVE_OPER_ORIGEN,OPDI_NUMF_SECUENCIA_OPER)
+           LEFT JOIN =SREFISTE ON (RFTR_CVE_TIPO_TRANSACCION,RFTR_CVE_OPER)
+                                 =(RFTE_CVE_TIPO_TRANSACCION,RFTE_CVE_OPER)
+           LEFT JOIN =STRACOMP ON RFTR_NUMF_TRANSACCION
+                                 =TRCO_NUMF_TRANSACCION
+                WHERE RFTR_NUM_CONTRATO=:RFTR-NUM-CONTRATO
+                  AND RFTR_NUM_PRODUCTO=:RFTR-NUM-PRODUCTO
+                  AND RFTR_FECH_FIN_OPERACION between :H-FECH-INI AND :H-FECH-FIN
+               AND (((OPDI_CODN_TIPO_IMPORTE=4 AND OPDI_CODN_CUS=0
+                  AND OPDI_CODN_EFE=1)
+                  OR (OPDI_CODN_TIPO_IMPORTE=0 AND OPDI_CODN_CUS<>0))
+*                   OR RFTR_CVE_OPER IN ("ENTTITRA","IMPUDEPA","RETEIMPU","PAGAPRIM","ABONPRIM","IMPUISR"))
+                  OR RFTR_CVE_OPER IN ("ENTTITRA","IMPUDEPA","RETEIMPU","PAGAPRIM","ABONPRIM","IMPUISR","IMPUINEF"))
+                 AND RFTE_CVE_TIPO_TRANSACCION IS NULL
+                 AND SUBSTRING (RFTR_CVE_TIPO_SALDO FROM 1 FOR 2)="DI"
+            ORDER BY 1,2,3
+              BROWSE ACCESS
+  END-EXEC.
+
+  EXEC SQL DECLARE CUR_INDS CURSOR FOR
+        SELECT CASE
+               WHEN UPPER(TRIM(HUNI_CVE_INDICADOR_MERCADO))="INPC"
+               THEN "0" ELSE "1" END
+              ,HUNI_FECH_PUBLICACION_UNIDAD
+              ,HUNI_PREG_INDICADOR
+         FROM =SHISTUNI
+         WHERE HUNI_CVE_INDICADOR_MERCADO
+            IN ("INPC","UDI")
+           AND HUNI_FECH_PUBLICACION_UNIDAD
+       BETWEEN :H-FECH-INI
+           AND :H-FECH-FIN
+      ORDER BY 1,2,3
+        BROWSE ACCESS
+   END-EXEC.
+
+ 01 LSS-CTO-TRATAMIENTO-IMPOSITIVO         PIC S9(4) VALUE ZERO COMP.
+    88 CTO-GRAVADO                         VALUE 1.
+    88 CTO-EXENTO                          VALUE 0.
+
+ 01 LSS-PRO-TRATAMIENTO-IMPOSITIVO         PIC S9(4) VALUE ZERO COMP.
+    88 PRO-GRAVADO                         VALUE 1.
+    88 PRO-EXENTO                          VALUE 0.
+
+ 01 LSS-TIPO-TRATAMIENTO                   PIC S9(4) VALUE ZERO COMP.
+    88 ES-GRAVADO                          VALUE 1.
+    88 ES-EXENTO                           VALUE 0.
+
+ 01 LSS-ES-PAGO-INT                        PIC S9(4) VALUE ZERO COMP.
+    88 L88-PAGO-INTERES                    VALUE 1.
+    88 L88-ENAJENACION                     VALUE 2.
+
+ 01 WSS-FECH-ULT-PAGO                      PIC S9(8) VALUE ZERO COMP.
+ 01 WSS-ULT-PROP                           PIC S9(8)V9(10) value 1 COMP.
+ 01 WSS-FORMATOS.
+    02 WSS-FECHA                           PIC 9999/99/99.
+ 01 wss-trns                               PIC 9(8) VALUE ZERO COMP.
+ 01 WSS-INDICADORES.
+    03 WSS-PRIMER-DD-HABIL-MM-ACT          PIC 9(08).
+    03 WSS-FECH-LIQ                        PIC 9(8).
+ 01 WSS-ERR-MENSAJE-CONSOLA.
+    03 WSS-ERR-PROGRAMA                    PIC  X(08).
+    03 WSS-ERR-MENSAJE                     PIC  X(80).
+ 01 WSS-PROCESADOS                         PIC 9(9) VALUE ZERO.
+ 01 WSS-trn-PROCESADOS                     PIC 9(9) VALUE ZERO.
+ 01 t                                      NATIVE-2 VALUE ZERO.
+ 01 T-TIT-TRANSACCION                      PIC S9(18) VALUE ZERO COMP.
+
+ 01 WSS-PARAMETROS.
+    03 WSS-PRM-NOM                         PIC X(30).
+    03 WSS-PRM-NOM-LNG                     NATIVE-2 value zero.
+    03 WSS-PRM-VALOR                       PIC X(30).
+    03 WSS-PRM-RSL                         PIC S9(04).
+       88 WSS-PRM-SIN-VALOR                VALUE -1.
+    03 PSS-FECH-PROC                       PIC 9(8).
+    03 PSS-TRANS-COUNT                     PIC 9(8).
+    03 PSS-NUM-COPIA                       PIC 9(2).
+    03 PSS-FECH-INI                        PIC 9(8).
+    03 PSS-FECH-FIN                        PIC 9(8).
+
+ 01 corto-tit                              PIC S9(18) COMP.
+ 01 WSS-TIT-TMP                            PIC S9(18) COMP.
+ 01 WSS-TIT-TMP-pi                         PIC S9(18) COMP.
+ 01 WSS-CAPAS.
+    02 IND-CAPAS NATIVE-2 VALUE ZERO.
+    02 WSS-CAPAS-TABLE OCCURS 1 TO 1100 TIMES
+       DEPENDING ON IND-CAPAS
+       ASCENDING CAP-FECH-APLICACION
+       INDEXED BY CAPAS-INDEX.
+       03 CAP-CVE-OPER                     PIC  X(8).
+       03 CAP-FECH-APLICACION              PIC S9(8) COMP.
+       03 CAP-TIT                          PIC S9(18) COMP.
+       03 CAP-IMPO                         PIC S9(16)V9(2) COMP.
+
+ 01 WSS-CHECKDATE-PARAMS.
+    02 WSS-CHKDT-DATE                      PIC X(8).
+    02 WSS-CHKDT-ERR-RETURN                PIC 9(1) VALUE ZERO.
+
+ 01 WSS-SIGHABIL-PARAMS.
+    02 WSS-SIGH-DATE-I                     PIC X(8).
+    02 WSS-SIGH-DATE-F                     PIC X(8).
+    02 WSS-SIGH-DAYS                       PIC S9(4) VALUE ZERO COMP.
+
+ 01 WSS-DAYSBTWDATES-PARAMS.
+    02 W-DBDT-DATE-INI                     PIC X(8).
+    02 W-DBDT-DATE-FIN                     PIC X(8).
+    02 W-DBDT-RETURN                       PIC S9(4) VALUE ZERO COMP.
+
+ 01 WSS-FECHA-INI.
+    02 WSS-FECH-INI-AAAAMM                 PIC 9(6).
+    02 WSS-FECH-INI-DD                     PIC 9(2).
+ 01 WSS-FECHA-FIN.
+    02 WSS-FECH-FIN-AAAAMM                 PIC 9(6).
+    02 WSS-FECH-FIN-DD                     PIC 9(2).
+
+ 01 WSS-TRAN-IMPO-TRAN-TMP                 PIC S9(16)V9(2) value zero COMP.
+ 01 variables-pp.
+    02 p-fecha                             pic 9999/99/99.
+    02 p-cto                               pic zzzzzzZ9.
+    02 p-importe                           pic ---.---.--9.99.
+    02 p-importe2                          pic ---.---.--9.99.
+    02 p-t                                 pic ---.---.--9.
+
+ 01 WSS-MONTO-MINIMO-REPORTE               PIC S9(16)V9(2) VALUE 200 COMP.
+ 01 vrs-ess.
+    02 ess-p                               pic zzzzzzzz9.
+    02 ess-cls                             pic x(4).
+    02 ess-emis                            pic x(17).
+    02 ess-fech-emis                       pic 9999/99/99.
+    02 ess-fech-ini                        pic 9999/99/99.
+    02 ess-fech-fin                        pic 9999/99/99.
+    02 ess-plzo-calc                       pic ---9.
+    02 ess-plzo-emis                       pic ---9.
+    02 WSS-CALCULOS.
+       03 WSS-IMPO-COSTO                   PIC S9(16)V9(2) COMP.
+       03 WSS-IMPO-UNITARIO                PIC S9(12)V9(6) COMP.
+       03 WSS-TIT-SIN-POSIC                PIC S9(18) COMP.
+
+ COPY w-cc-params         OF $DESA15.ASITECTA.COMPCOB.
+ COPY FILESYSTEM-CONSTANT OF $SYSTEM.ZSYSDEFS.ZSYSCOB.
+ COPY ESS-VARS-STND-000   OF $DESA12.SCOGLCPA.C85DEFPG.
+ COPY ESS-VARS-STND-010   OF $DESA12.SCOGLCPA.C85DEFPG.
+ COPY ESS-VARS-STND-020   OF $DESA12.SCOGLCPA.C85DEFPG.
+ COPY WSS-VARS-STND-000   OF $DESA12.SCOGLCPA.C85DEFPG.
+
+ 01 w-define-info.
+    02 w-intname                           pic x(24).
+    02 w-class                             pic x(16).
+    02 w-attribute-name                    pic x(16).
+    02 w-extname                           pic x(36).
+    02 w-extname-len                       native-2.
+    02 w-error                             native-2.
+       88 ENOERR                           value 0.
+       88 EEOF                             value 1.
+       88 ESYSMSG                          value 6.
+       88 ENOCOMPLETION                    value 40.
+       88 ESQLERR                          value 197.
+       88 EBADFILE                         value 4197.
+       88 EUNKNOWN                         value 4208.
+       88 EDEFINEERR                       value 4212.
+       88 EERR                             values are -32767 thru -1,
+                                                           1 thru 32767.
+  01 tpon-num-cto-ant                      pic 9(9) comp.
+  01 tpon-num-pro-ant                      pic 9(9) comp.
+
+ EXTENDED-STORAGE SECTION.
+
+ 01 WSS-INDS.
+    02 IND-INDS PIC 9(4) VALUE ZERO COMP.
+    02 WSS-INDS-TABLE OCCURS 1 TO 8768 TIMES
+       DEPENDING ON IND-INDS
+       ASCENDING IND-NUM-MERCADO, IND-FECH
+       INDEXED BY INDS-INDEX.
+       03 IND-VALORES.
+          04 IND-NUM-MERCADO               PIC 9(1).
+          04 IND-FECH                      PIC 9(8) COMP.
+          04 IND-PRECIO                    PIC S9(10)V9(8) COMP.
+
+ 01 WSS-TRANSACTIONS.
+    02 TRN-I PIC 9(4) VALUE ZERO COMP.
+    02 IND-TRNS PIC 9(4) VALUE ZERO COMP.
+    02 WSS-TRANSACTIONS-TABLE OCCURS 1 TO 7000 TIMES
+       DEPENDING ON IND-TRNS
+       ASCENDING TRN-FECH-APLICACION, TRN-FOLIO
+       INDEXED BY TRANSACTIONS-INDEX.
+       03 TRN-FECH-APLICACION              PIC 9(8) COMP.
+       03 TRN-FOLIO                        PIC 9(9) COMP.
+       03 TRN-CVE-OPER                     PIC X(8).
+       03 TRN-TIT                          PIC S9(18) COMP.
+       03 TRN-IMPO                         PIC S9(16)V9(2) COMP.
+       03 TRN-CODN-TIPO-IMPORTE            PIC S9(4) COMP.
+       03 TRN-CODN-CUS                     PIC S9(4) COMP.
+       03 TRN-CODN-EFE                     PIC S9(4) COMP.
+       03 TRN-FECH-REGISTRO                PIC 9(8) COMP.
+       03 TRN-TMPO-REGISTRO                PIC 9(8) COMP.
+       03 TRN-PREC-TRANSACCION             PIC S9(7)V9(8) COMP.
+       03 TRN-CVE-TPO-TRAN                 PIC X(4).
+       03 TRN-TASA                         PIC S9(4)V9(8) COMP.
+
+ 01 WSS-LIMPIA-ENTRADA-INTERNA PIC X(01).
+    88 WSS-LIMPIA-ENTRADA-INTERNA-SI VALUE "S".
+    88 WSS-LIMPIA-ENTRADA-INTERNA-NO VALUE "N".
+ 01 WSS-COSTO-UNITARIO PIC X(01).
+    88 WSS-COSTO-UNITARIO-SI VALUE "S".
+    88 WSS-COSTO-UNITARIO-NO VALUE "N".
+
+ 01 WSS-LIMPIEZA PIC S9(16)V9(2) COMP.
+
+ 01 WSS-FILLER1.
+    02 WSS-FILLER1-P1 PIC ----------9.99.
+    02 FILLER         PIC X(01).
+    02 WSS-FILLER1-P2 PIC ZZZZZZZ.
+    02 FILLER         PIC X(01).
+    02 WSS-FILLER1-P3 PIC ZZZZZZZ.
+    02 FILLER         PIC X(01).
+    02 WSS-FILLER1-P4 PIC ZZZ.
+    02 FILLER         PIC X(01).
+    02 WSS-FILLER1-P5 PIC ZZZ.
+    02 FILLER         PIC X(01).
+    02 WSS-FILLER1-P6 PIC ----------9.99.
+
+ 01 WSS-FILLER2-H.
+    02 FILLER PIC X(43) VALUE "INT REAL + (INT NOM - (IMPORTE * COCIENTE))".
+ 01 WSS-FILLER2.
+    02 WSS-F2-IR    PIC --------.---.--9,99.
+    02 WSS-F2-IN    PIC --------.---.--9,99.
+    02 WSS-F2-IMPO  PIC --------.---.--9,99.
+    02 WSS-F2-CO    PIC ---------9,99999999.
+
+ 01 WSS-FILLER3.
+    02 FILLER       PIC X(09) VALUE "IR X CAPA".
+    02 WSS-F3-IR    PIC --------.---.--9,99.
+
+ 01 WSS-FILLER4-H.
+    02 FILLER PIC X(27) VALUE "COCIENTE: FECH INI FECH FIN".
+ 01 WSS-FILLER4.
+    02 WSS-F4-FECH-INI    PIC 9(08).
+    02 FILLER             PIC X(01) VALUE " ".
+    02 WSS-F4-FECH-FIN    PIC 9(08).
+    02 FILLER1            PIC X(01) VALUE " ".
+    02 WSS-F4-INPC-INI    PIC ---------9,99999999.
+    02 FILLER             PIC X(01) VALUE " ".
+    02 WSS-F4-INPC-FIN    PIC ---------9,99999999.
+
+ PROCEDURE DIVISION.
+
+ 0000-DRIVER.
+      set ENOERR to TRUE
+      copy cobol-Init-CC-Params of $DESA15.ASITECTA.COMPCOB.
+      initialize shistuni-rec sopdisve-rec spacupon-rec
+                 sctocpon-rec semicpon-rec semisora-rec
+                 sprodope-rec srefispr-rec srefistr-rec
+                 stracomp-rec stransac-rec scarxcto-rec
+                 srefistc-rec
+                 wss-daysbtwdates-params
+                 scontrat-rec scliente-rec
+                 wss-trns lss-tipo-tratamiento
+                 h-host-variables IND-INDS
+                 wss-sighabil-params
+      perform 1000-START-UP
+      if ENOERR
+         perform 0000-PROCESO.
+      if ENOERR
+         perform 3000-CLOSEDOWN.
+      if ESQLERR
+         enter tal "SQLCADISPLAY" using SQLCA.
+      perform SetComplCd.
+
+ 0000-PROCESO.
+      if PSS-NUM-COPIA > 5
+         set EUNKNOWN to true
+         move 1000 to w-cc-compl-cd
+         display "Err param COPIA incorrecto:"
+                  WSS-PRM-VALOR
+             upon HOME-TERM
+      ELSE
+         IF PSS-NUM-COPIA = 0 OR 1
+            MOVE "SA" TO TRAS-CODX-TIPO-TRASPASO
+            PERFORM 2000-PROCESSING
+            MOVE "ES" TO TRAS-CODX-TIPO-TRASPASO
+            PERFORM 2000-PROCESSING
+            MOVE "EN" TO TRAS-CODX-TIPO-TRASPASO
+            PERFORM 2000-PROCESSING
+         END-IF
+         IF PSS-NUM-COPIA NOT = 1
+            MOVE "NO" TO TRAS-CODX-TIPO-TRASPASO
+            PERFORM 2000-PROCESSING
+         END-IF.
+
+ 1000-START-UP.
+      PERFORM 8000-CALL-TGETMYID
+      PERFORM 1100-OBTEN-PARAMETROS
+      MOVE "Inicia Ejecucion Cuponados. Copia"
+        TO ESS-MSG-OPER-L3-TXT-ERROR
+      MOVE PSS-NUM-COPIA
+        TO ESS-MSG-OPER-L3-TXT-ERROR (35:)
+      if ENOERR perform 8000000-MENSAJES-OPERADOR
+      if ENOERR perform 1200-LOAD-INDS.
+
+ 1100-OBTEN-PARAMETROS.
+      perform 1110-OBTEN-COPIA
+      if ENOERR perform 1120-Obten-Fech-ini.
+      if ENOERR perform 1130-Obten-Fech-fin.
+      if ENOERR perform 1140-Establece-Rangos.
+
+ 1110-OBTEN-COPIA.
+      INITIALIZE WSS-PRM-NOM-LNG
+      MOVE "COPIA" TO WSS-PRM-NOM
+      INSPECT WSS-PRM-NOM TALLYING WSS-PRM-NOM-LNG
+          FOR CHARACTERS BEFORE SPACE
+      PERFORM 7000-OBTEN-PARAMETRO
+      IF WSS-PRM-SIN-VALOR
+         MOVE 0 TO PSS-NUM-COPIA
+      ELSE
+         if wss-prm-valor is NUMERO
+            move function NUMVAL(WSS-PRM-VALOR)
+              to PSS-NUM-COPIA
+         ELSE
+            set EUNKNOWN to true
+            move 1000 to w-cc-compl-cd
+            display "Err param COPIA incorrecto:"
+                     WSS-PRM-VALOR
+                upon HOME-TERM.
+
+ 1120-Obten-Fech-ini.
+      initialize WSS-CHECKDATE-PARAMS
+      MOVE "FECHAINI" TO WSS-PRM-NOM
+      INSPECT WSS-PRM-NOM TALLYING WSS-PRM-NOM-LNG
+          FOR CHARACTERS BEFORE SPACE
+      PERFORM 7000-OBTEN-PARAMETRO
+      MOVE WSS-PRM-VALOR TO WSS-CHKDT-DATE
+      if WSS-PRM-SIN-VALOR
+         set EUNKNOWN to true
+         move 1000 to w-cc-compl-cd
+         display pss-num-copia
+               "Err Proporcionar fecha inicial yyyymmdd"
+            upon HOME-TERM
+      else
+         PERFORM 8010-CALL-CHECKDATE
+         MOVE WSS-CHKDT-DATE TO PSS-FECH-INI WSS-FECHA
+         if wss-chkdt-err-return not = 0
+            set EUNKNOWN to true
+            move 1000 to w-cc-compl-cd
+            display pss-num-copia
+                  "Err Fecha inicial incorrecta : "
+                    WSS-CHKDT-DATE
+               upon HOME-TERM
+         end-if
+      end-if
+      MOVE PSS-FECH-INI TO WSS-FECHA-INI
+      display PSS-NUM-COPIA
+            " Inf: PARAM FECHA INICIAL:"
+              WSS-FECHA
+         upon HOME-TERM.
+
+ 1130-Obten-Fech-fin.
+      INITIALIZE WSS-CHECKDATE-PARAMS
+      MOVE "FECHAFIN" TO WSS-PRM-NOM
+      INSPECT WSS-PRM-NOM TALLYING WSS-PRM-NOM-LNG
+          FOR CHARACTERS BEFORE SPACE
+      PERFORM 7000-OBTEN-PARAMETRO
+      MOVE WSS-PRM-VALOR TO WSS-CHKDT-DATE
+      IF WSS-PRM-SIN-VALOR
+         set EUNKNOWN to true
+         move 1000 to w-cc-compl-cd
+         display pss-num-copia
+               "Err Proporcionar fecha final yyyymmdd"
+            upon HOME-TERM
+      else
+         PERFORM 8010-CALL-CHECKDATE
+         MOVE WSS-CHKDT-DATE TO PSS-FECH-FIN WSS-FECHA
+         IF WSS-CHKDT-ERR-RETURN not = 0
+            set EUNKNOWN to true
+            move 1000 to w-cc-compl-cd
+            display pss-num-copia
+                  "Err Fecha inicial incorrecta : "
+                    WSS-CHKDT-DATE
+               upon HOME-TERM
+      end-if
+      MOVE PSS-FECH-FIN TO WSS-FECHA-FIN
+      display PSS-NUM-COPIA " Inf: PARAM FECHA FINAL:" WSS-FECHA
+         upon HOME-TERM.
+
+ 1140-Establece-Rangos.
+      EVALUATE PSS-NUM-COPIA
+          WHEN 2 MOVE 000000000 TO H-NUM-CONTRATO-I
+                 MOVE 000000000 TO H-NUM-PRODUCTO-I
+                 MOVE 080030249 TO H-NUM-CONTRATO-F
+                 MOVE 000036731 TO H-NUM-PRODUCTO-F
+          WHEN 3 MOVE 080030249 TO H-NUM-CONTRATO-I
+                 MOVE 000036731 TO H-NUM-PRODUCTO-I
+                 MOVE 080103710 TO H-NUM-CONTRATO-F
+                 MOVE 000038099 TO H-NUM-PRODUCTO-F
+          WHEN 4 MOVE 080103710 TO H-NUM-CONTRATO-I
+                 MOVE 000038099 TO H-NUM-PRODUCTO-I
+                 MOVE 080128546 TO H-NUM-CONTRATO-F
+                 MOVE 000035856 TO H-NUM-PRODUCTO-F
+          WHEN 5 MOVE 080128546 TO H-NUM-CONTRATO-I
+                 MOVE 000035856 TO H-NUM-PRODUCTO-I
+                 MOVE 999999999 TO H-NUM-CONTRATO-F
+                 MOVE 999999999 TO H-NUM-PRODUCTO-F
+          WHEN OTHER
+                 MOVE 000000000 TO H-NUM-CONTRATO-I
+                 MOVE 000000000 TO H-NUM-PRODUCTO-I
+                 MOVE 999999999 TO H-NUM-CONTRATO-F
+                 MOVE 999999999 TO H-NUM-PRODUCTO-F
+      END-EVALUATE.
+
+ 1200-LOAD-INDS.
+      MOVE 20030101     TO H-FECH-INI
+      MOVE PSS-FECH-FIN TO H-FECH-FIN
+      MOVE 1 TO WSS-SIGH-DAYS
+      MOVE 0 TO IND-INDS
+      EXEC SQL OPEN CUR_INDS END-EXEC
+      IF SQLCODE = 0
+         perform with TEST AFTER until SQLCODE NOT = 0 or EERR
+            EXEC SQL FETCH CUR_INDS
+               INTO :HUNI-CVE-INDICADOR-MERCADO
+                   ,:HUNI-FECH-PUBLICACION-UNIDAD
+                   ,:HUNI-PREG-INDICADOR
+            END-EXEC
+            IF SQLCODE = 0
+               ADD 1 TO IND-INDS
+               MOVE FUNCTION NUMVAL-C(HUNI-CVE-INDICADOR-MERCADO)
+                 TO IND-NUM-MERCADO (IND-INDS)
+               MOVE HUNI-FECH-PUBLICACION-UNIDAD
+                 TO IND-FECH (IND-INDS)
+               MOVE HUNI-PREG-INDICADOR
+                 TO IND-PRECIO (IND-INDS)
+                 PERFORM 1210-Valida-Sec
+            ELSE
+               IF SQLCODE NOT = 100
+                  set ESQLERR to TRUE
+                  move 1000 to w-cc-compl-cd
+                  move 1    to w-cc-stop-opt
+               END-IF
+            END-IF
+         END-PERFORM
+      ELSE
+         set ESQLERR to TRUE
+         move 1000 to w-cc-compl-cd
+         move 1    to w-cc-stop-opt
+      END-IF.
+
+ 1210-Valida-Sec.
+      IF HUNI-FECH-PUBLICACION-UNIDAD = H-FECH-INI
+         move HUNI-FECH-PUBLICACION-UNIDAD to EPON-FECH-EMISION
+         move EPON-FECH-EMISION to W-DBDT-DATE-INI
+         CALL "DATEOFFSET"
+               USING W-DBDT-DATE-INI
+                     W-DBDT-DATE-INI
+                     WSS-SIGH-DAYS
+         move W-DBDT-DATE-INI to H-FECH-INI
+         IF H-FECH-INI > H-FECH-FIN
+            MOVE 20030101 TO H-FECH-INI
+         END-IF
+      ELSE
+         if FUNCTION NUMVAL-C(HUNI-CVE-INDICADOR-MERCADO) = 0
+            move "INPC" TO HUNI-CVE-INDICADOR-MERCADO
+         else
+            move "UDI" TO HUNI-CVE-INDICADOR-MERCADO
+         end-if
+         set EUNKNOWN to true
+         move 1000 to w-cc-compl-cd
+         move 1    to w-cc-stop-opt
+         display pss-num-copia
+               " Err Falta valor '"
+                 HUNI-CVE-INDICADOR-MERCADO "' para la fecha:"
+                 H-FECH-INI
+            upon HOME-TERM
+      END-IF.
+
+ 2000-Processing.
+      display  pss-num-copia " " TRAS-CODX-TIPO-TRASPASO
+             " Rango ini:" H-NUM-CONTRATO-I "-" H-NUM-PRODUCTO-I
+             " Rango fin:" H-NUM-CONTRATO-F "-" H-NUM-PRODUCTO-F
+               upon HOME-TERM
+      EXEC SQL OPEN CUR_CTOCPON END-EXEC
+      IF SQLCODE = 0
+         PERFORM WITH TEST AFTER UNTIL SQLCODE = 100 or EERR
+            EXEC SQL FETCH CUR_CTOCPON
+               INTO :TPON-NUM-CONTRATO,:TPON-NUM-PRODUCTO
+                   ,:TPON-ANIO-MES,:TPON-TIT-INICIAL
+                   ,:TPON-TIT-FINAL ,:TPON-IMPO-COSTO-PROMEDIO
+                   ,:TPON-IMPO-COSTO-PROM-AJUSTADO
+                   ,:TPON-FECH-ULT-MOVTO
+                   ,:EPON-BAND-COBRA-IMPUESTOS-RV
+                   ,:EPON-FECH-EMISION ,:EPON-FECH-VENCIMIENTO-RF
+                   ,:EPON-PLZO-PAGO-CUPON-RF ,:EPON-CVE-TIPO-VALOR
+                   ,:EPON-CVE-UNIDAD-VALUADORA
+                   ,:PROP-CVE-MERCADO
+            END-EXEC
+            IF SQLCODE = 0
+               ADD 1 TO WSS-PROCESADOS
+               PERFORM 2100-Revisa-Exencion-Imp
+               INITIALIZE IND-TRNS
+               if EPON-PLZO-PAGO-CUPON-RF = 0 or
+                  EPON-FECH-EMISION = 0
+                  display pss-num-copia
+                        " Err Sin valor Plazo cupon y/o fecha emision, prod:"
+                          TPON-NUM-PRODUCTO
+                     upon HOME-TERM
+               else
+                  PERFORM 2200-Calcula-Interes
+               end-if
+            ELSE
+               if SQLCODE not = 100
+                  set ESQLERR to TRUE
+                  move 1000   to w-cc-compl-cd
+                  move 1      to w-cc-stop-opt
+               END-IF
+            END-IF
+            move TPON-NUM-CONTRATO to tpon-num-cto-ant
+            move TPON-NUM-PRODUCTO to tpon-num-pro-ant
+         END-PERFORM
+         EXEC SQL CLOSE CUR_CTOCPON END-EXEC
+      ELSE
+         set ESQLERR to TRUE
+         move 1000   to w-cc-compl-cd
+         move 1      to w-cc-stop-opt
+      END-IF.
+
+ 2100-Revisa-Exencion-Imp.
+      initialize lss-tipo-tratamiento
+*       if TPON-NUM-CONTRATO not = tpon-num-cto-ant
+         perform 2110-Revisa-Imp-Cto.
+*       if TPON-NUM-PRODUCTO not = tpon-num-pro-ant
+         perform 2120-Revisa-Imp-Emi.
+      set ES-EXENTO to TRUE
+      if CTO-GRAVADO and PRO-GRAVADO
+         set ES-GRAVADO to TRUE.
+
+ 2110-Revisa-Imp-Cto.
+      initialize lss-cto-tratamiento-impositivo
+                 scarxcto-rec
+                 scontrat-rec
+                 scliente-rec
+      move 1 to ccto-cant-porc-cargo
+      move tpon-num-contrato to ccto-num-contrato
+                                cont-num-contrato
+      move "IMPU" to ccto-cve-cargo
+      perform 9010-select-SCARXCTO
+      move ccto-cant-porc-cargo
+        to lss-cto-tratamiento-impositivo
+      IF CTO-GRAVADO
+         move 1 to ccto-cant-porc-cargo
+         perform 9020-select-SCONTRAT
+          move ccto-cant-porc-cargo
+            to lss-cto-tratamiento-impositivo.
+      move ZERO to SQLCODE.
+
+ 2120-Revisa-Imp-Emi.
+      initialize LSS-PRO-TRATAMIENTO-IMPOSITIVO
+                 semisora-Rec
+      move tpon-num-producto to emis-num-producto
+      perform 9030-select-SEMISORA.
+      if emis-band-cobra-impuestos-rv = "S" OR
+         epon-band-cobra-impuestos-rv = "S"
+         set PRO-GRAVADO to TRUE.
+      move ZERO to SQLCODE.
+
+ 2200-Calcula-Interes.
+      INITIALIZE WSS-DAYSBTWDATES-PARAMS H-RFPR-ANIO-MES-ANT
+      MOVE PSS-FECH-INI TO H-FECH-INI
+      MOVE PSS-FECH-FIN TO H-FECH-FIN
+      IF TPON-ANIO-MES = WSS-FECH-INI-AAAAMM
+         INITIALIZE SREFISTR-REC SOPDISVE-REC STRANSAC-REC srefistc-rec
+         MOVE TPON-NUM-CONTRATO TO RFTR-NUM-CONTRATO
+         MOVE TPON-NUM-PRODUCTO TO RFTR-NUM-PRODUCTO
+         MOVE WSS-FECH-INI-AAAAMM TO H-FECH-INI-AAAAMM
+         PERFORM 2210-obten-Ult-PI
+         MOVE H-FECH-INI TO W-DBDT-DATE-INI
+         MOVE 0          TO W-DBDT-DATE-FIN
+         COMPUTE W-DBDT-RETURN = EPON-PLZO-PAGO-CUPON-RF * -1
+         CALL "DATEOFFSET"
+               USING W-DBDT-DATE-INI W-DBDT-DATE-FIN W-DBDT-RETURN
+         IF W-DBDT-DATE-FIN = 0
+            set EUNKNOWN to true
+            move 1000 to w-cc-compl-cd
+            move 1    to w-cc-stop-opt
+            DISPLAY PSS-NUM-COPIA " Err on DATEOFFSET"
+                   " Dti=" W-DBDT-DATE-INI
+                   "  d= " W-DBDT-RETURN
+               upon HOME-TERM
+         END-IF
+         IF RFTR-FECH-FIN-OPERACION < 20030101 OR
+            RFTR-FECH-FIN-OPERACION < W-DBDT-DATE-FIN
+            MOVE W-DBDT-DATE-FIN TO H-FECH-INI
+         ELSE
+            MOVE RFTR-FECH-FIN-OPERACION TO H-FECH-INI
+         END-IF
+         IF EPON-FECH-EMISION > H-FECH-INI
+            MOVE EPON-FECH-EMISION TO H-FECH-INI
+         END-IF
+      ELSE
+         COMPUTE H-FECH-INI = TPON-ANIO-MES * 100
+      END-IF.
+      INITIALIZE SREFISTR-REC srefistc-rec STRANSAC-REC SOPDISVE-REC
+      MOVE TPON-NUM-CONTRATO TO RFTR-NUM-CONTRATO TRAN-NUM-CONTRATO
+      MOVE TPON-NUM-PRODUCTO TO RFTR-NUM-PRODUCTO TRAN-NUM-PRODUCTO
+      PERFORM 2220-obten-TRNS
+      EXEC SQL BEGIN WORK END-EXEC
+               PERFORM 2230-Procesa-TRNS
+                if H-RFPR-ANIO-MES-ANT > 0
+                   PERFORM 9090-Update-CREFISPR
+                end-if
+      ENTER TAL ENDTRANSACTION.
+
+  2230-Procesa-TRNS.
+       INITIALIZE LSS-ES-PAGO-INT
+                  SREFISPR-REC SREFISTR-REC srefistc-rec
+                  WSS-FECH-ULT-PAGO
+                  IND-CAPAS SOPDISVE-REC
+
+       move TPON-ANIO-MES     to RFPR-ANIO-MES
+       move TPON-NUM-CONTRATO to RFPR-NUM-CONTRATO
+       move tpon-num-producto to RFPR-NUM-PRODUCTO
+       MOVE "DIRE" TO RFPR-CVE-TIPO-SALDO
+       IF PROP-CVE-MERCADO = "MCAP"
+          MOVE "DISP" TO RFPR-CVE-TIPO-SALDO
+       END-IF
+       MOVE TPON-IMPO-COSTO-PROMEDIO
+         TO RFPR-IMPO-COSTO-PROMEDIO
+       MOVE TPON-IMPO-COSTO-PROM-AJUSTADO
+         TO RFPR-IMPO-COSTO-PROM-AJUSTADO
+       MOVE TPON-TIT-INICIAL    TO RFPR-TIT-TEMPORAL
+       move TPON-FECH-ULT-MOVTO to RFPR-FECH-ULT-MOVTO
+
+       PERFORM VARYING TRN-I FROM 1 BY 1
+               UNTIL TRN-I > IND-TRNS
+               INITIALIZE SREFISTR-REC srefistc-rec
+
+               PERFORM 2221-move-To-SREFISTR
+
+               if RFTR-FECH-FIN-OPERACION >= PSS-FECH-INI
+                  if H-RFPR-ANIO-MES-ANT > 0
+                     if RFTR-ANIO-MES not = H-RFPR-ANIO-MES-ANT
+                        PERFORM 9090-Update-CREFISPR
+                     end-if
+                  end-if
+               end-if
+
+               IF RFPR-FECH-ULT-MOVTO = 0
+                  MOVE RFTR-FECH-FIN-OPERACION TO RFPR-FECH-ULT-MOVTO
+               END-IF
+               PERFORM 4444-Calculo
+               if RFTR-FECH-FIN-OPERACION >= PSS-FECH-INI
+                  MOVE RFTR-ANIO-MES TO H-RFPR-ANIO-MES-ANT
+               end-if
+       END-PERFORM.
+
+ 2221-move-To-SREFISTR.
+      COMPUTE RFTR-ANIO-MES = FUNCTION INTEGER-PART
+              ( TRN-FECH-APLICACION (TRN-I) / 100 )
+      MOVE TPON-NUM-CONTRATO    TO RFTR-NUM-CONTRATO
+      MOVE TPON-NUM-PRODUCTO    TO RFTR-NUM-PRODUCTO
+      MOVE "DIRE"               TO RFTR-CVE-TIPO-SALDO
+      IF PROP-CVE-MERCADO = "MCAP"
+         MOVE "DISP"            TO RFTR-CVE-TIPO-SALDO
+      END-IF
+      MOVE TRN-FOLIO (TRN-I)    TO RFTR-NUMF-TRANSACCION
+      MOVE TRN-CVE-OPER (TRN-I) TO RFTR-CVE-OPER
+      MOVE EPON-CVE-TIPO-VALOR  TO RFTR-CVE-TIPO-VALOR
+      EVALUATE TRN-CODN-CUS (TRN-I)
+          WHEN +1 MOVE "E"      TO RFTR-BAND-ENT-SAL
+          WHEN -1 MOVE "S"      TO RFTR-BAND-ENT-SAL
+      END-EVALUATE
+      MOVE TRN-IMPO (TRN-I)     TO RFTR-IMPO-TRANSACCION
+      MOVE TRN-TIT (TRN-I)      TO RFTR-TIT-TRANSACCION
+      MOVE TRN-PREC-TRANSACCION (TRN-I)  TO RFTR-PRECIO
+      MOVE TRN-FECH-APLICACION (TRN-I)   TO RFTR-FECH-FIN-OPERACION
+      MOVE TRN-FECH-REGISTRO (TRN-I)     TO RFTR-FECH-INI-OPERACION
+      MOVE TRN-CVE-TPO-TRAN (TRN-I)      TO RFTR-CVE-TIPO-TRANSACCION
+      MOVE TRN-TASA (TRN-I)              TO RFTR-TASA-INT-PROM-NOMINAL
+      MOVE TRN-CODN-TIPO-IMPORTE (TRN-I) TO OPDI-CODN-TIPO-IMPORTE
+      MOVE TRN-CODN-CUS (TRN-I)          TO OPDI-CODN-CUS
+      MOVE TRN-CODN-EFE (TRN-I)          TO OPDI-CODN-EFE.
+
+ 9000-INSERT-SREFISSA.
+      EXEC SQL
+         INSERT INTO =SREFISSA
+         VALUES (:RFSA-NUMF-TRANSACCION
+               ,:RFSA-TIT-FINAL
+               ,:RFSA-IMPO-COSTO-PROMEDIO)
+         For Repeatable access
+      END-EXEC.
+      IF SQLCODE NOT = 0 and SQLCODE NOT = 100 AND SQLCODE NOT = -8227
+         set ESQLERR to TRUE
+         move 1000   to w-cc-compl-cd
+         move 1      to w-cc-stop-opt
+         DISPLAY PSS-NUM-COPIA " Err " SQLCODE
+               " on Insert SREFISSE "
+               " folio= " RFSA-NUMF-TRANSACCION
+            upon HOME-TERM
+      ELSE
+         IF SQLCODE = -8227
+            PERFORM 9000-UPDATE-SREFISSA
+         END-IF
+      end-if.
+
+ 9000-UPDATE-SREFISSA.
+      EXEC SQL
+         UPDATE =SREFISSA
+         SET RFSA_TIT_FINAL = :RFSA-TIT-FINAL
+            ,RFSA_IMPO_COSTO_PROMEDIO = :RFSA-IMPO-COSTO-PROMEDIO
+         WHERE RFSA_NUMF_TRANSACCION = :RFSA-NUMF-TRANSACCION
+         FOR STABLE ACCESS
+      END-EXEC.
+      IF SQLCODE NOT = 0 and SQLCODE NOT = 100
+         DISPLAY PSS-NUM-COPIA " Err " SQLCODE
+               " on upd SA "
+               " fol:" RFSA-NUMF-TRANSACCION
+            upon HOME-TERM
+         ENTER SQLCADISPLAY USING SQLCA
+         set ESQLERR to TRUE
+         move 1000   to w-cc-compl-cd
+         move 1      to w-cc-stop-opt
+      END-IF.
+
+ PROCESA-PRIMAS.
+   IF RFTR-CVE-OPER = "PAGAPRIM" OR "ABONPRIM"
+      MOVE ZEROES TO OPDI-CODN-TIPO-IMPORTE
+      MOVE ZEROES TO OPDI-CODN-CUS
+      MOVE ZEROES TO OPDI-CODN-EFE
+      SET L88-PAGO-INTERES TO TRUE
+      MOVE RFTR-IMPO-TRANSACCION TO RFTR-IMPO-INTERES-NOMINAL
+                                    RFTR-IMPO-INTERES-REAL
+   END-IF.
+
+ REGISTRA-SALIDA.
+      IF RFTR-CVE-OPER = "SALTITRA" OR "SATRACO"
+         MOVE RFTR-NUMF-TRANSACCION    TO RFSA-NUMF-TRANSACCION
+         MOVE RFPR-IMPO-COSTO-PROMEDIO TO RFSA-IMPO-COSTO-PROMEDIO
+         MOVE RFPR-TIT-TEMPORAL        TO RFSA-TIT-FINAL
+         PERFORM 9000-INSERT-SREFISSA
+      END-IF.
+
+ 0000-INVERTIDAS.
+*================
+ IF INVERTIDAS
+     IF RFTR-ANIO-MES > 201500
+        IF RFTR-CVE-OPER = "VTANORMC" OR "VTASDIRE"
+           IF RFPR-TIT-TEMPORAL = ZEROES
+              DISPLAY "VTA SIN TIT CTO,PROD,FOL:" RFTR-NUM-CONTRATO "," RFTR-NUM-PRODUCTO "," RFTR-NUMF-TRANSACCION UPON HOME-TERM
+           END-IF
+        END-IF
+     END-IF
+ END-IF.
+
+ 4444-Calculo.
+      PERFORM 0000-INVERTIDAS
+      INITIALIZE H-TOTAL-PAGOS
+      PERFORM PROCESA-PRIMAS
+      PERFORM REGISTRA-SALIDA
+
+      INITIALIZE STRANSAC-REC H-IMPO-TRANSACCION-UDI
+      MOVE 0 TO WSS-ULT-PROP
+
+** ent-sal custodia
+      IF OPDI-CODN-TIPO-IMPORTE = 0 AND
+         OPDI-CODN-CUS NOT = 0 AND
+         RFTR-TIT-TRANSACCION > 0
+         if RFTR-CVE-OPER = "ENTTITRA" or "ENTRACO"
+            MOVE RFTR-IMPO-TRANSACCION
+              TO TRAN-IMPO-TRANSACCION
+            perform 0000-OBTEN-CCP-ORIGEN
+            if H-COSTO-UNITARIO > 0
+               COMPUTE RFTR-IMPO-TRANSACCION ROUNDED
+                     = H-COSTO-UNITARIO
+                     * RFTR-TIT-TRANSACCION
+            end-if
+         end-if
+** amordepp: titulos= 0 amortizacion oparcial solodisminuye CCP
+**           tutulo > 0 se comporta como amotizacion (afacta custodia)
+
+         perform 0000-cpas-coloc
+         IF RFTR-FECH-FIN-OPERACION >= PSS-FECH-INI
+             MOVE RFPR-FECH-ULT-MOVTO     TO H-FECH-INICIAL
+             MOVE RFTR-FECH-FIN-OPERACION TO H-FECH-FINAL
+             PERFORM 9040-Select-FactorA
+             EVALUATE OPDI-CODN-CUS
+                WHEN +1 PERFORM 0100-PROCESA-ENT
+                WHEN -1 PERFORM 0200-PROCESA-SAL
+             END-EVALUATE
+         END-IF
+      END-IF
+
+** amorpaca
+      IF ( RFTR-CVE-OPER = "AMORPACA" OR
+         ( RFTR-CVE-OPER = "AMORDEPP" AND
+           RFTR-TIT-TRANSACCION = 0 )) AND
+           RFTR-FECH-FIN-OPERACION >= PSS-FECH-INI
+           MOVE RFPR-FECH-ULT-MOVTO     TO H-FECH-INICIAL
+           MOVE RFTR-FECH-FIN-OPERACION TO H-FECH-FINAL
+           PERFORM 9040-Select-FactorA
+           COMPUTE RFPR-IMPO-COSTO-PROM-AJUSTADO ROUNDED
+                = (RFPR-IMPO-COSTO-PROM-AJUSTADO * H-COCIENTE-IND)
+           COMPUTE RFPR-IMPO-COSTO-PROMEDIO
+                 = RFPR-IMPO-COSTO-PROMEDIO
+                 - RFTR-IMPO-TRANSACCION
+           COMPUTE RFPR-IMPO-COSTO-PROM-AJUSTADO
+                 = RFPR-IMPO-COSTO-PROM-AJUSTADO
+                 - RFTR-IMPO-TRANSACCION
+           PERFORM AMORPACA-COSTO-NEGATIVO
+      END-IF
+
+** pagos de interes
+      IF OPDI-CODN-TIPO-IMPORTE = 4 AND
+         OPDI-CODN-CUS = 0 AND
+         OPDI-CODN-EFE = 1 AND
+         RFTR-CVE-OPER NOT = "AMORPACA"
+         SET L88-PAGO-INTERES TO TRUE
+         IF RFTR-FECH-FIN-OPERACION >= PSS-FECH-INI
+            IF RFTR-FECH-FIN-OPERACION = WSS-FECH-ULT-PAGO
+               MOVE 1 TO WSS-ULT-PROP
+            else
+               PERFORM 0200-PROCESA-PAGO
+               MOVE 0 TO WSS-ULT-PROP
+            END-IF
+         END-IF
+         INITIALIZE IND-CAPAS
+         ADD 1 TO IND-CAPAS
+         MOVE RFTR-CVE-OPER            TO CAP-CVE-OPER (IND-CAPAS)
+         MOVE RFTR-FECH-FIN-OPERACION  TO CAP-FECH-APLICACION (IND-CAPAS)
+         MOVE RFTR-TIT-TRANSACCION     TO CAP-TIT (IND-CAPAS)
+         MOVE RFPR-IMPO-COSTO-PROMEDIO TO CAP-IMPO (IND-CAPAS)
+         MOVE RFTR-FECH-FIN-OPERACION  TO WSS-FECH-ULT-PAGO
+      END-IF
+
+** impuesto
+      IF OPDI-CODN-TIPO-IMPORTE = 1 AND
+         OPDI-CODN-CUS = 0 AND
+         OPDI-CODN-EFE = -1
+
+         IF RFTR-FECH-FIN-OPERACION >= PSS-FECH-INI
+            MOVE RFTR-IMPO-TRANSACCION TO RFTR-IMPO-RETENCION
+         END-IF
+      ELSE
+         IF ( OPDI-CODN-TIPO-IMPORTE = 0 AND
+              OPDI-CODN-CUS =  1 AND
+              OPDI-CODN-EFE = -1 and
+              RFTR-TIT-TRANSACCION > 0 ) or
+            ( OPDI-CODN-TIPO-IMPORTE = 4 AND
+              OPDI-CODN-CUS = 0 AND
+              OPDI-CODN-EFE = 1 AND
+              RFTR-CVE-OPER NOT = "AMORPACA")
+              MOVE RFTR-FECH-FIN-OPERACION TO RFPR-FECH-ULT-MOVTO
+         END-IF
+      END-IF
+
+      IF RFTR-FECH-FIN-OPERACION >= PSS-FECH-INI
+         PERFORM 0000-Acumula-Int-PR
+      END-IF
+
+      IF RFTR-FECH-FIN-OPERACION >= PSS-FECH-INI AND
+         WSS-ULT-PROP = 0
+         if ( RFTR-CVE-OPER = "ENTTITRA" or "ENTRACO" ) AND
+             TRAN-IMPO-TRANSACCION > 0
+             MOVE TRAN-IMPO-TRANSACCION
+               TO RFTR-IMPO-TRANSACCION
+         end-if
+         IF H-TOTAL-PAGOS > 1
+            MOVE H-IMPO-TRANSACCION-UDI TO RFTR-IMPO-TRANSACCION
+         END-IF
+
+         if RFTR-FECH-FIN-OPERACION >= PSS-FECH-INI
+            PERFORM 9070-Insert-CREFISTR
+            INITIALIZE SREFISTC-REC
+            move rftr-numf-transaccion
+              to rftc-numf-transaccion
+            move rftr-fech-ini-operacion
+              to rftc-fech-ult-movto
+            move rfpr-impo-costo-promedio
+              to rftc-impo-costo-promedio
+            move rfpr-impo-costo-prom-ajustado
+              to rftc-impo-costo-prom-ajustado
+            perform 9100-update-srefistc
+         end-if
+
+         COMPUTE RFPR-ANIO-MES = FUNCTION INTEGER-PART
+                 ( RFTR-FECH-FIN-OPERACION / 100 )
+      END-IF.
+
+ AMORPACA-COSTO-NEGATIVO.
+   IF RFTR-CVE-OPER = "AMORPACA"
+      IF RFPR-IMPO-COSTO-PROMEDIO < 0
+         SET L88-PAGO-INTERES TO TRUE
+         COMPUTE RFPR-IMPO-COSTO-PROM-AJUSTADO =  RFPR-IMPO-COSTO-PROMEDIO * -1
+         IF RFPR-IMPO-COSTO-PROM-AJUSTADO >  ZEROES
+            MOVE RFPR-IMPO-COSTO-PROM-AJUSTADO TO RFTR-IMPO-INTERES-NOMINAL
+                                                  RFTR-IMPO-INTERES-REAL
+            MOVE ZEROES                        TO RFPR-IMPO-COSTO-PROMEDIO
+                                                  RFPR-IMPO-COSTO-PROM-AJUSTADO
+         END-IF
+      END-IF
+   END-IF.
+
+ 0000-OBTEN-CCP-ORIGEN.
+      INITIALIZE SCONTRAT-REC H-COSTO-UNITARIO
+      PERFORM OBTIENE-COSTO-UNITARIO
+      EXEC SQL
+           SELECT RFTR_NUM_CONTRATO
+            INTO :CONT-NUM-CONTRATO
+            FROM =SREFISTR
+           WHERE RFTR_ANIO_MES=:RFTR-ANIO-MES
+             AND RFTR_NUM_PRODUCTO=:RFTR-NUM-PRODUCTO
+             AND RFTR_CVE_TIPO_SALDO=:RFTR-CVE-TIPO-SALDO
+             AND UPPER(TRIM(RFTR_CVE_OPER)) in ("SALTITRA","SATRACO")
+             AND RFTR_CVE_TIPO_VALOR=:RFTR-CVE-TIPO-VALOR
+             AND RFTR_TIT_TRANSACCION=:RFTR-TIT-TRANSACCION
+             AND RFTR_FECH_INI_OPERACION=:RFTR-FECH-INI-OPERACION
+             AND RFTR_FECH_FIN_OPERACION=:RFTR-FECH-FIN-OPERACION
+             AND RFTR_NUMF_TRANSACCION<:RFTR-NUMF-TRANSACCION
+          BROWSE ACCESS
+      END-EXEC
+
+      COMPUTE TRAN-FECH-REGISTRO
+           = ( RFTR-FECH-FIN-OPERACION / 100 ) - 1
+      IF FUNCTION MOD ( TRAN-FECH-REGISTRO 100 ) = 0
+         COMPUTE TRAN-FECH-REGISTRO = TRAN-FECH-REGISTRO - 88
+      END-IF
+
+      IF WSS-COSTO-UNITARIO-NO
+         IF SQLCODE = 0 OR SQLCODE = -8222
+            EXEC SQL
+                 select case when RFPR_TIT_FINAL > 0
+                             then (RFPR_IMPO_COSTO_PROMEDIO +.00000001)
+                                / RFPR_TIT_FINAL
+                             else 0
+                        end
+                  INTO :H-COSTO-UNITARIO
+                  FROM =SREFISPR
+                  WHERE RFPR_ANIO_MES=:TRAN-FECH-REGISTRO
+                    AND RFPR_NUM_CONTRATO=:CONT-NUM-CONTRATO
+                    AND RFPR_NUM_PRODUCTO=:RFTR-NUM-PRODUCTO
+                    AND RFPR_CVE_TIPO_SALDO=:RFTR-CVE-TIPO-SALDO
+                 BROWSE ACCESS
+            END-EXEC
+         END-IF
+      END-IF
+      MOVE 0 TO SQLCODE.
+      PERFORM DETERMINA-LIMPIEZA.
+
+ OBTIENE-COSTO-UNITARIO.
+   MOVE "N" TO WSS-COSTO-UNITARIO
+   EXEC SQL
+      SELECT CASE WHEN RFSA_TIT_FINAL > 0
+         THEN (RFSA_IMPO_COSTO_PROMEDIO + .00000001)
+            / RFSA_TIT_FINAL
+         ELSE 0 END
+      INTO :H-COSTO-UNITARIO
+      FROM =SREFISTC
+      JOIN =SREFISSA ON (RFTC_NUMF_TRANS_GENERADORA = RFSA_NUMF_TRANSACCION)
+      WHERE RFTC_NUMF_TRANSACCION = :RFTR-NUMF-TRANSACCION
+      BROWSE ACCESS
+   END-EXEC.
+   IF SQLCODE = ZEROES
+      MOVE "S" TO WSS-COSTO-UNITARIO
+   END-IF.
+
+ DETERMINA-LIMPIEZA.
+    MOVE "S" TO WSS-LIMPIA-ENTRADA-INTERNA
+    INITIALIZE H-CVE-OPER H-CODN-TIPO-IMPORTE
+    EXEC SQL
+      SELECT RFTR_CVE_OPER
+            ,OPDI_CODN_TIPO_IMPORTE
+      INTO :H-CVE-OPER          INDICATOR :H-INDICATOR
+          ,:H-CODN-TIPO-IMPORTE INDICATOR :H-INDICATOR
+      FROM =SREFISTR
+      JOIN =SOPDISVE ON (RFTR_CVE_OPER,1)
+        =(OPDI_CVE_OPER_ORIGEN,OPDI_NUMF_SECUENCIA_OPER)
+      WHERE RFTR_NUM_CONTRATO = :CONT-NUM-CONTRATO
+      AND RFTR_NUM_PRODUCTO = :RFTR-NUM-PRODUCTO
+      AND RFTR_FECH_FIN_OPERACION <= :RFTR-FECH-FIN-OPERACION
+      AND SUBSTRING (RFTR_CVE_OPER FROM 6 FOR 3)<>"ARE"
+      AND SUBSTRING (RFTR_CVE_TIPO_SALDO FROM 1 FOR 2)="DI"
+      AND RFTR_CVE_TIPO_TRANSACCION NOT IN ("GARA","MDAD")
+      AND (((OPDI_CODN_TIPO_IMPORTE=4 AND OPDI_CODN_CUS=0 AND OPDI_CODN_EFE=1)
+         OR (OPDI_CODN_TIPO_IMPORTE=0 AND OPDI_CODN_CUS=1 AND OPDI_CODN_EFE=-1)))
+      AND RFTR_CVE_OPER <> "AMORPACA"
+      ORDER BY RFTR_FECH_FIN_OPERACION DESC
+      BROWSE ACCESS
+    END-EXEC.
+    IF H-CODN-TIPO-IMPORTE = 4
+       MOVE "N" TO WSS-LIMPIA-ENTRADA-INTERNA
+    END-IF.
+
+ 0000-Acumula-Int-PR.
+      IF L88-PAGO-INTERES
+         INITIALIZE LSS-ES-PAGO-INT
+         IF ES-GRAVADO
+            COMPUTE RFPR-IMPO-INT-NOMINAL-GRAVADO
+                  = RFPR-IMPO-INT-NOMINAL-GRAVADO
+                  + RFTR-IMPO-INTERES-NOMINAL
+            COMPUTE RFPR-IMPO-INT-REAL-GRAVADO
+                  = RFPR-IMPO-INT-REAL-GRAVADO
+                  + RFTR-IMPO-INTERES-REAL
+         ELSE
+            COMPUTE RFPR-IMPO-INT-NOMINAL-EXENTO
+                  = RFPR-IMPO-INT-NOMINAL-EXENTO
+                  + RFTR-IMPO-INTERES-NOMINAL
+            COMPUTE RFPR-IMPO-INT-REAL-EXENTO
+                  = RFPR-IMPO-INT-REAL-EXENTO
+                  + RFTR-IMPO-INTERES-REAL
+         END-IF
+      END-IF
+      IF L88-ENAJENACION
+         INITIALIZE LSS-ES-PAGO-INT
+         IF ES-GRAVADO
+            COMPUTE RFPR-IMPO-GAN-NOMINAL-GRAVADO
+                  = RFPR-IMPO-GAN-NOMINAL-GRAVADO
+                  + RFTR-IMPO-INTERES-NOMINAL
+            COMPUTE RFPR-IMPO-GAN-REAL-GRAVADO
+                  = RFPR-IMPO-GAN-REAL-GRAVADO
+                  + RFTR-IMPO-INTERES-REAL
+         ELSE
+            COMPUTE RFPR-IMPO-GAN-NOMINAL-EXENTO
+                  = RFPR-IMPO-GAN-NOMINAL-EXENTO
+                  + RFTR-IMPO-INTERES-NOMINAL
+            COMPUTE RFPR-IMPO-GAN-REAL-EXENTO
+                  = RFPR-IMPO-GAN-REAL-EXENTO
+                  + RFTR-IMPO-INTERES-REAL
+         END-IF
+      END-IF
+      COMPUTE RFPR-IMPO-RETENCION
+            = RFPR-IMPO-RETENCION
+            + RFTR-IMPO-RETENCION.
+
+ 0000-cpas-coloc.
+      INITIALIZE T-TIT-TRANSACCION
+      IF OPDI-CODN-CUS = 1
+         ADD 1 TO IND-CAPAS
+         MOVE RFTR-CVE-OPER           TO CAP-CVE-OPER (IND-CAPAS)
+         MOVE RFTR-FECH-FIN-OPERACION TO CAP-FECH-APLICACION (IND-CAPAS)
+         MOVE RFTR-TIT-TRANSACCION    TO CAP-TIT (IND-CAPAS)
+         MOVE RFTR-IMPO-TRANSACCION   TO CAP-IMPO (IND-CAPAS)
+         IF (RFTR-CVE-OPER = "ENTTITRA" or "ENTRACO") AND WSS-LIMPIA-ENTRADA-INTERNA-NO
+            compute CAP-FECH-APLICACION (IND-CAPAS)
+                  = CAP-FECH-APLICACION (IND-CAPAS) * -1
+         END-IF
+         if RFTR-CVE-OPER = "ENTRACUS" or "ENTCUSTO"
+            compute CAP-FECH-APLICACION (IND-CAPAS)
+                  = CAP-FECH-APLICACION (IND-CAPAS) * -1
+          end-if
+      ELSE
+         move RFTR-TIT-TRANSACCION to corto-tit
+         perform varying t from 1 by 1
+                 until t > IND-CAPAS
+              or corto-tit = 0
+                initialize wss-tit-tmp
+               if corto-tit > CAP-TIT (t)
+                  move cap-tit (t) to wss-tit-tmp
+                  subtract CAP-TIT (t) from corto-tit
+                  move 0 to CAP-TIT (t)
+               else
+                  move cap-tit (t) to T-TIT-TRANSACCION
+                  move corto-tit to wss-tit-tmp
+                  subtract corto-tit from cap-tit (t)
+                  move cap-tit (t)  to corto-tit
+                  move cap-impo (t) to tran-impo-transaccion
+                  compute tran-impo-transaccion
+                       = (tran-impo-transaccion / T-TIT-TRANSACCION)
+                        * corto-tit
+                  move tran-impo-transaccion to cap-impo (t)
+                  move 0 to corto-tit
+               end-if
+         end-perform
+      END-IF.
+
+ 0100-PROCESA-ENT.
+         COMPUTE RFPR-IMPO-COSTO-PROMEDIO ROUNDED
+               = RFPR-IMPO-COSTO-PROMEDIO
+               + RFTR-IMPO-TRANSACCION
+         COMPUTE RFPR-IMPO-COSTO-PROM-AJUSTADO ROUNDED
+              = (RFPR-IMPO-COSTO-PROM-AJUSTADO * H-COCIENTE-IND)
+              +  RFTR-IMPO-TRANSACCION
+      ADD RFTR-TIT-TRANSACCION TO RFPR-TIT-TEMPORAL.
+
+ 0200-PROCESA-SAL.
+*==================
+ PERFORM 0220-PROCESA-SAL
+ IF RFTR-CVE-OPER = "SALTITRA" OR "SATRACO" OR "SALCUSTO" OR "SALECUST"
+    INITIALIZE RFTR-IMPO-INTERES-REAL RFTR-IMPO-INTERES-NOMINAL
+ END-IF.
+
+ 0220-PROCESA-SAL.
+      INITIALIZE WSS-CALCULOS
+      IF RFPR-TIT-TEMPORAL > ZERO
+         IF RFPR-TIT-TEMPORAL  - RFTR-TIT-TRANSACCION < ZERO
+            COMPUTE WSS-IMPO-UNITARIO ROUNDED
+                  = RFTR-IMPO-TRANSACCION / RFTR-TIT-TRANSACCION
+            COMPUTE WSS-TIT-SIN-POSIC = RFTR-TIT-TRANSACCION
+                                      - RFPR-TIT-TEMPORAL
+            COMPUTE WSS-IMPO-COSTO ROUNDED
+                  = WSS-IMPO-UNITARIO
+                  * WSS-TIT-SIN-POSIC
+            MOVE RFPR-TIT-TEMPORAL TO RFTR-TIT-TRANSACCION
+            COMPUTE RFTR-IMPO-TRANSACCION ROUNDED
+                  = WSS-IMPO-UNITARIO
+                  * RFTR-TIT-TRANSACCION
+         END-IF
+         IF OPDI-CODN-EFE = 1 AND
+          ( RFTR-CVE-OPER NOT = "SALTITRA" and
+            RFTR-CVE-OPER NOT = "SATRACO")
+*** FELIX-INI
+*             RFTR-CVE-OPER NOT = "AMORPATI" )
+*** FELIX-FIN
+            PERFORM 0221-CALCULA-UTILIDAD
+         END-IF
+         IF RFTR-TIT-TRANSACCION = RFPR-TIT-TEMPORAL
+            INITIALIZE RFPR-IMPO-COSTO-PROMEDIO
+                       RFPR-IMPO-COSTO-PROM-AJUSTADO
+                       RFPR-TIT-TEMPORAL
+                       RFPR-FECH-ULT-MOVTO
+                       ind-capas
+                       wss-fech-ult-pago
+         ELSE
+            PERFORM 220-CALCULA-COSTO
+         END-IF
+         IF WSS-TIT-SIN-POSIC > ZERO
+            ADD WSS-IMPO-COSTO TO RFPR-IMPO-COSTO-PROMEDIO
+            COMPUTE RFPR-TIT-TEMPORAL = RFPR-TIT-TEMPORAL
+                                      - WSS-TIT-SIN-POSIC
+         END-IF
+      ELSE
+         ADD RFTR-IMPO-TRANSACCION TO RFPR-IMPO-COSTO-PROMEDIO
+         COMPUTE RFPR-TIT-TEMPORAL = RFPR-TIT-TEMPORAL
+                                   - RFTR-TIT-TRANSACCION
+      END-IF.
+
+  211-CALCULA-UTILIDAD-UDI.
+      SET L88-ENAJENACION TO TRUE
+      IF RFPR-TIT-TEMPORAL > ZERO
+         MOVE RFTR-FECH-FIN-OPERACION TO W-DBDT-DATE-INI
+         MOVE 1 TO W-DBDT-RETURN
+         PERFORM 7100-SEARCH-INDS
+         COMPUTE RFPR-IMPO-COSTO-PROMEDIO
+              = RFPR-IMPO-COSTO-PROMEDIO
+            - ( RFTR-IMPO-TRANSACCION
+              / H-PREG-IND-I )
+         IF RFPR-IMPO-COSTO-PROMEDIO < 0
+            COMPUTE RFPR-IMPO-COSTO-PROM-AJUSTADO
+                 =  RFPR-IMPO-COSTO-PROMEDIO
+                 *  H-PREG-IND-I * -1
+            IF RFPR-IMPO-COSTO-PROM-AJUSTADO >
+               WSS-MONTO-MINIMO-REPORTE
+               MOVE RFPR-IMPO-COSTO-PROM-AJUSTADO
+                 TO RFTR-IMPO-INTERES-NOMINAL
+                    RFTR-IMPO-INTERES-REAL
+               MOVE ZERO TO RFPR-IMPO-COSTO-PROMEDIO
+                            RFPR-IMPO-COSTO-PROM-AJUSTADO
+            END-IF
+         END-IF
+         MOVE RFPR-IMPO-COSTO-PROMEDIO
+           TO RFPR-IMPO-COSTO-PROM-AJUSTADO
+      END-IF.
+
+ 0221-CALCULA-UTILIDAD.
+     SET L88-ENAJENACION TO TRUE
+     IF RFPR-TIT-TEMPORAL > ZERO
+        COMPUTE WSS-IMPO-UNITARIO ROUNDED
+              = RFPR-IMPO-COSTO-PROMEDIO / RFPR-TIT-TEMPORAL
+        COMPUTE RFTR-IMPO-INTERES-NOMINAL ROUNDED
+              = WSS-IMPO-UNITARIO
+              * RFTR-TIT-TRANSACCION
+        COMPUTE RFTR-IMPO-INTERES-NOMINAL ROUNDED
+              = RFTR-IMPO-TRANSACCION
+              - RFTR-IMPO-INTERES-NOMINAL
+        IF RFTR-IMPO-INTERES-NOMINAL >= 1 OR
+           RFTR-IMPO-INTERES-NOMINAL < -1
+           COMPUTE RFTR-IMPO-INTERES-REAL ROUNDED
+                = (RFPR-IMPO-COSTO-PROM-AJUSTADO * H-COCIENTE-IND)
+           COMPUTE WSS-IMPO-UNITARIO ROUNDED
+                 = RFTR-IMPO-INTERES-REAL  / RFPR-TIT-TEMPORAL
+           COMPUTE RFTR-IMPO-INTERES-REAL ROUNDED
+                 = WSS-IMPO-UNITARIO
+                 * RFTR-TIT-TRANSACCION
+           COMPUTE RFTR-IMPO-INTERES-REAL ROUNDED
+                 = RFTR-IMPO-TRANSACCION
+                 - RFTR-IMPO-INTERES-REAL
+        END-IF
+     END-IF.
+
+ 220-CALCULA-COSTO.
+      IF RFPR-TIT-TEMPORAL > ZERO
+         COMPUTE WSS-IMPO-UNITARIO ROUNDED
+               = RFPR-IMPO-COSTO-PROMEDIO / RFPR-TIT-TEMPORAL
+         COMPUTE WSS-IMPO-COSTO ROUNDED
+               = WSS-IMPO-UNITARIO * RFTR-TIT-TRANSACCION
+         COMPUTE RFPR-IMPO-COSTO-PROMEDIO ROUNDED
+               = RFPR-IMPO-COSTO-PROMEDIO
+               - WSS-IMPO-COSTO
+         COMPUTE WSS-IMPO-UNITARIO ROUNDED
+               = RFPR-IMPO-COSTO-PROM-AJUSTADO / RFPR-TIT-TEMPORAL
+         COMPUTE WSS-IMPO-COSTO ROUNDED
+               = WSS-IMPO-UNITARIO * RFTR-TIT-TRANSACCION
+         COMPUTE RFPR-IMPO-COSTO-PROM-AJUSTADO ROUNDED
+               = RFPR-IMPO-COSTO-PROM-AJUSTADO
+               - WSS-IMPO-COSTO
+         COMPUTE RFPR-TIT-TEMPORAL
+               = RFPR-TIT-TEMPORAL
+               - RFTR-TIT-TRANSACCION.
+
+ 2210-obten-Ult-PI.
+      EXEC SQL
+           SELECT MAX(RFTR_FECH_FIN_OPERACION)
+            INTO :RFTR-FECH-FIN-OPERACION
+            FROM =SREFISTR
+            JOIN =SOPDISVE ON (RFTR_CVE_OPER,1)
+                 =(OPDI_CVE_OPER_ORIGEN,OPDI_NUMF_SECUENCIA_OPER)
+       LEFT JOIN =SREFISTE ON (RFTR_CVE_TIPO_TRANSACCION,RFTR_CVE_OPER)
+                 =(RFTE_CVE_TIPO_TRANSACCION,RFTE_CVE_OPER)
+           WHERE RFTR_NUM_CONTRATO=:RFTR-NUM-CONTRATO
+             AND RFTR_NUM_PRODUCTO=:RFTR-NUM-PRODUCTO
+             AND RFTR_ANIO_MES<:H-FECH-INI-AAAAMM
+             AND OPDI_CVE_OPER_ORIGEN=OPDI_CVE_OPER_DISP
+            AND (OPDI_CODN_CUS=0
+             AND OPDI_CODN_TIPO_IMPORTE=4
+             AND OPDI_CODN_EFE=1
+             AND RFTR_CVE_OPER<>"AMORPACA")
+             AND RFTE_CVE_TIPO_TRANSACCION IS NULL
+          BROWSE ACCESS
+      END-EXEC.
+      IF SQLCODE NOT = 0 AND NOT = 100 AND NOT = -8423
+          set ESQLERR to TRUE
+          move 1000   to w-cc-compl-cd
+          move 1      to w-cc-stop-opt
+          DISPLAY PSS-NUM-COPIA " Err " SQLCODE
+                " Al acceder a la tabla =SREFISTR"
+                " Cto:" RFTR-NUM-CONTRATO
+                " Prd:" RFTR-NUM-PRODUCTO
+             upon HOME-TERM
+      END-IF.
+
+ 0000-OBTIENE-FECH-ULT-PAGO.
+*===========================
+ EXEC SQL
+    SELECT MAX(RFTR_FECH_FIN_OPERACION)
+    INTO :H-FECH-PAGO-CUPON
+    FROM =SREFISTR
+    WHERE RFTR_NUM_CONTRATO = :RFTR-NUM-CONTRATO
+      AND RFTR_NUM_PRODUCTO = :RFTR-NUM-PRODUCTO
+      AND RFTR_CVE_OPER     IN ("PAGAINTE","INTEDEPP")
+      AND RFTR_FECH_FIN_OPERACION < :RFTR-FECH-FIN-OPERACION
+    BROWSE ACCESS
+ END-EXEC.
+*  EXEC SQL
+*     SELECT MAX(PACU_FECH_PAGO_CUPON)
+*     INTO :H-FECH-PAGO-CUPON
+*     FROM =SPACUPON
+*     WHERE PACU_NUM_PRODUCTO = :RFTR-NUM-PRODUCTO
+*       AND PACU_FECH_PAGO_CUPON < :RFTR-FECH-FIN-OPERACION
+*     BROWSE ACCESS
+*  END-EXEC.
+*  IF SQLCODE = ZEROES
+*     MOVE H-FECH-PAGO-CUPON TO WSS-FECH-ULT-PAGO
+*  END-IF.
+
+ 0200-PROCESA-PAGO.
+      INITIALIZE SEMISORA-REC WSS-DAYSBTWDATES-PARAMS H-TOTAL-PAGOS
+      IF WSS-FECH-ULT-PAGO = 0
+         add 1 to ind-capas
+         INITIALIZE cap-fech-aplicacion (ind-capas)
+                    cap-tit (ind-capas)
+                    cap-impo (ind-capas)
+                    cap-cve-oper (ind-capas)
+         perform 0000-log-fech
+      END-IF
+      PERFORM 0000-OBTIENE-FECH-ULT-PAGO
+      IF SQLCODE = ZEROES
+         MOVE H-FECH-PAGO-CUPON TO WSS-FECH-ULT-PAGO
+      END-IF
+      MOVE WSS-FECH-ULT-PAGO       TO W-DBDT-DATE-INI
+      MOVE RFTR-FECH-FIN-OPERACION TO W-DBDT-DATE-FIN
+      PERFORM 8020-CALL-DAYSBTWDATES
+      MOVE W-DBDT-RETURN TO EMIS-PLZO-PAGO-CUPON-RF
+      PERFORM 9060-select-MAS1MOVXDIA
+
+      IF H-TOTAL-PAGOS > 1
+         MOVE RFTR-IMPO-TRANSACCION TO H-IMPO-TRANSACCION-UDI
+         MOVE H-IMPO-TRANSACCION    TO RFTR-IMPO-TRANSACCION
+         MOVE H-TITULOS             TO RFTR-TIT-TRANSACCION
+      END-IF
+
+      MOVE EMIS-PLZO-PAGO-CUPON-RF TO RFTR-PLZO-DIAS
+      MOVE RFTR-FECH-FIN-OPERACION TO W-DBDT-DATE-INI
+      MOVE -1 TO WSS-SIGH-DAYS
+      CALL "DATEOFFSET"
+            USING W-DBDT-DATE-INI W-DBDT-DATE-INI WSS-SIGH-DAYS
+      MOVE 0 TO W-DBDT-RETURN
+      PERFORM 7100-SEARCH-INDS
+      MOVE H-PREG-IND-I TO H-PREG-IND-F
+
+      IF IND-CAPAS > 1
+         PERFORM 0000-PROCAPAS
+      ELSE
+        INITIALIZE WSS-TRAN-IMPO-TRAN-TMP
+        MOVE RFTR-IMPO-TRANSACCION
+          TO RFTR-IMPO-INTERES-NOMINAL
+
+        MOVE -1 TO WSS-SIGH-DAYS
+        MOVE WSS-FECH-ULT-PAGO TO W-DBDT-DATE-INI
+        CALL "DATEOFFSET" USING W-DBDT-DATE-INI W-DBDT-DATE-INI WSS-SIGH-DAYS
+        MOVE 0 TO W-DBDT-RETURN
+        PERFORM 7100-SEARCH-INDS
+        COMPUTE H-COCIENTE-IND
+            = ( H-PREG-IND-F / H-PREG-IND-I ) - 1
+        if RFPR-TIT-TEMPORAL = 0
+           MOVE RFTR-IMPO-TRANSACCION TO RFTR-IMPO-INTERES-REAL
+        else
+           COMPUTE RFTR-IMPO-INTERES-REAL ROUNDED
+                 = RFTR-IMPO-INTERES-NOMINAL
+                 - ( ( RFPR-IMPO-COSTO-PROMEDIO / RFPR-TIT-TEMPORAL )
+                  * RFTR-TIT-TRANSACCION * H-COCIENTE-IND  )
+        end-if
+      END-IF.
+      IF RFTR-FECH-FIN-OPERACION >= PSS-FECH-INI
+         PERFORM 0000-LIMPIA-COSTO
+      END-IF.
+
+ 0000-LIMPIA-COSTO.
+      COMPUTE WSS-LIMPIEZA = RFTR-IMPO-TRANSACCION - RFTR-IMPO-INTERES-NOMINAL
+      MOVE RFPR-IMPO-COSTO-PROMEDIO
+        TO RFPR-IMPO-COSTO-PROM-AJUSTADO
+
+      IF RFTR-IMPO-INTERES-NOMINAL
+       < RFTR-IMPO-TRANSACCION
+             COMPUTE RFPR-IMPO-COSTO-PROMEDIO
+                   = RFPR-IMPO-COSTO-PROMEDIO - WSS-LIMPIEZA
+              COMPUTE RFPR-IMPO-COSTO-PROM-AJUSTADO
+                    = RFPR-IMPO-COSTO-PROM-AJUSTADO - WSS-LIMPIEZA
+      END-IF.
+
+ 0000-log-fech.
+      MOVE EPON-FECH-EMISION       TO W-DBDT-DATE-INI
+      MOVE RFTR-FECH-FIN-OPERACION TO W-DBDT-DATE-FIN
+      PERFORM 8020-CALL-DAYSBTWDATES
+      IF FUNCTION INTEGER-PART
+         ( W-DBDT-RETURN / EPON-PLZO-PAGO-CUPON-RF) > 1
+           MOVE RFTR-NUM-PRODUCTO       TO PACU-NUM-PRODUCTO
+           MOVE RFTR-FECH-FIN-OPERACION TO PACU-FECH-PAGO-CUPON
+           PERFORM 9050-Select-SPACUPON
+           IF SQLCODE = 0
+              MOVE PACU-FECH-PAGO-CUPON    TO W-DBDT-DATE-INI
+              MOVE RFTR-FECH-FIN-OPERACION TO W-DBDT-DATE-FIN
+              PERFORM 8020-CALL-DAYSBTWDATES
+           END-IF
+
+           IF RFTR-CVE-TIPO-VALOR = "1C"
+              MOVE W-DBDT-RETURN        TO EMIS-PLZO-PAGO-CUPON-RF
+                                           EPON-PLZO-PAGO-CUPON-RF
+              MOVE PACU-FECH-PAGO-CUPON TO WSS-FECH-ULT-PAGO
+           ELSE
+              IF FUNCTION INTEGER-PART
+                 ( W-DBDT-RETURN / EPON-PLZO-PAGO-CUPON-RF) > 1
+                   COMPUTE WSS-SIGH-DAYS  = EPON-PLZO-PAGO-CUPON-RF * -1
+                   MOVE RFTR-FECH-FIN-OPERACION TO W-DBDT-DATE-INI
+                   CALL "DATEOFFSET"
+                   USING W-DBDT-DATE-INI W-DBDT-DATE-INI WSS-SIGH-DAYS
+                   MOVE EPON-PLZO-PAGO-CUPON-RF TO EMIS-PLZO-PAGO-CUPON-RF
+                   MOVE W-DBDT-DATE-INI         TO WSS-FECH-ULT-PAGO
+              ELSE
+                   MOVE W-DBDT-RETURN        TO EMIS-PLZO-PAGO-CUPON-RF
+                   MOVE PACU-FECH-PAGO-CUPON TO WSS-FECH-ULT-PAGO
+              END-IF
+           END-IF
+      ELSE
+          MOVE W-DBDT-RETURN     TO EMIS-PLZO-PAGO-CUPON-RF
+          MOVE EPON-FECH-EMISION TO WSS-FECH-ULT-PAGO
+      END-IF.
+
+ 0000-FECHA-COMPRA-ORIGEN.
+*=========================
+ MOVE CAP-FECH-APLICACION ( T ) TO H-FECH-ENTRADA
+ INITIALIZE CONT-NUM-CONTRATO H-FECH-COMPRA-ORIGEN
+ EXEC SQL
+    SELECT RFTR_NUM_CONTRATO
+     INTO :CONT-NUM-CONTRATO
+     FROM =SREFISTR
+    WHERE RFTR_ANIO_MES=:RFTR-ANIO-MES
+      AND RFTR_NUM_PRODUCTO=:RFTR-NUM-PRODUCTO
+      AND RFTR_CVE_TIPO_SALDO=:RFTR-CVE-TIPO-SALDO
+      AND UPPER(TRIM(RFTR_CVE_OPER)) in ("SALTITRA","SATRACO")
+      AND RFTR_CVE_TIPO_VALOR=:RFTR-CVE-TIPO-VALOR
+      AND RFTR_TIT_TRANSACCION=:RFTR-TIT-TRANSACCION
+      AND RFTR_FECH_FIN_OPERACION = :H-FECH-ENTRADA
+      AND RFTR_NUMF_TRANSACCION<:RFTR-NUMF-TRANSACCION
+   BROWSE ACCESS
+ END-EXEC
+ IF SQLCODE = ZEROES
+    EXEC SQL
+      SELECT MAX(RFTR_FECH_FIN_OPERACION)
+      INTO :H-FECH-COMPRA-ORIGEN
+      FROM =SREFISTR
+      WHERE RFTR_NUM_CONTRATO = :CONT-NUM-CONTRATO
+      AND RFTR_NUM_PRODUCTO = :RFTR-NUM-PRODUCTO
+      AND RFTR_FECH_FIN_OPERACION <= :RFTR-FECH-FIN-OPERACION
+      AND SUBSTRING (RFTR_CVE_OPER FROM 6 FOR 3)<>"ARE"
+      AND SUBSTRING (RFTR_CVE_TIPO_SALDO FROM 1 FOR 2)="DI"
+      AND RFTR_CVE_TIPO_TRANSACCION NOT IN ("GARA","MDAD")
+      AND RFTR_CVE_OPER = "CPRADIRE"
+      BROWSE ACCESS
+    END-EXEC
+ END-IF.
+
+ 0000-CALCULA-PLAZO.
+*===================
+*** SI SE USA TR, CON CONTRATO ORIGEN, AGREGAR CONTRATO A SREFISSA
+ EXEC SQL
+    SELECT MAX(PACU_FECH_PAGO_CUPON)
+    INTO :H-FECH-PAGO-CUPON
+    FROM =SPACUPON
+    WHERE PACU_NUM_PRODUCTO = :RFTR-NUM-PRODUCTO
+      AND PACU_FECH_PAGO_CUPON < :RFTR-FECH-FIN-OPERACION
+    BROWSE ACCESS
+ END-EXEC.
+ IF SQLCODE = ZEROES
+    MOVE H-FECH-PAGO-CUPON       TO W-DBDT-DATE-INI
+    MOVE RFTR-FECH-FIN-OPERACION TO W-DBDT-DATE-FIN
+    PERFORM 8020-CALL-DAYSBTWDATES
+    MOVE W-DBDT-RETURN TO EPON-PLZO-PAGO-CUPON-RF
+ END-IF.
+
+ 0000-PROCAPAS.
+      PERFORM VARYING T FROM 1 BY 1
+          UNTIL T > IND-CAPAS
+          IF CAP-TIT (T) >  0
+              INITIALIZE WSS-TRAN-IMPO-TRAN-TMP
+
+               MOVE RFTR-FECH-FIN-OPERACION   TO W-DBDT-DATE-FIN
+
+              if CAP-FECH-APLICACION ( T ) >= 20030101
+                 MOVE CAP-FECH-APLICACION ( T ) TO W-DBDT-DATE-INI
+                 PERFORM 8020-CALL-DAYSBTWDATES
+                 MOVE W-DBDT-RETURN TO EMIS-NUM-AMORTIZACIONES
+
+                 IF CAP-CVE-OPER ( T ) = "ENTTITRA" OR "ENTRACO"
+                    PERFORM 0000-FECHA-COMPRA-ORIGEN
+                    IF H-FECH-COMPRA-ORIGEN NOT = ZEROES
+                       MOVE H-FECH-COMPRA-ORIGEN TO CAP-FECH-APLICACION ( T )
+                                                    W-DBDT-DATE-INI
+                    END-IF
+                 END-IF
+
+              else
+                 compute CAP-FECH-APLICACION ( T )
+                       = CAP-FECH-APLICACION ( T ) * -1
+*                  IF RFTR-CVE-TIPO-VALOR NOT = "FH"
+                    PERFORM 0000-CALCULA-PLAZO
+*                  END-IF
+                 MOVE RFTR-FECH-FIN-OPERACION TO W-DBDT-DATE-INI
+                 COMPUTE W-DBDT-RETURN = EPON-PLZO-PAGO-CUPON-RF * -1
+                 CALL "DATEOFFSET"
+                 USING W-DBDT-DATE-INI W-DBDT-DATE-INI W-DBDT-RETURN
+                 MOVE EMIS-PLZO-PAGO-CUPON-RF TO EMIS-NUM-AMORTIZACIONES
+              end-if
+
+              MOVE -1 TO WSS-SIGH-DAYS
+              CALL "DATEOFFSET" USING W-DBDT-DATE-INI
+                                      W-DBDT-DATE-INI
+                                      WSS-SIGH-DAYS
+              MOVE 0 TO W-DBDT-RETURN
+              PERFORM 7100-SEARCH-INDS
+
+              COMPUTE H-COCIENTE-IND
+                    = ( H-PREG-IND-F / H-PREG-IND-I ) - 1
+              IF ECHOED
+                 PERFORM 0000-COCIENTE
+              END-IF
+              if EMIS-NUM-AMORTIZACIONES > EMIS-PLZO-PAGO-CUPON-RF
+                 move EMIS-NUM-AMORTIZACIONES
+                   to EMIS-PLZO-PAGO-CUPON-RF
+              end-if
+
+              COMPUTE WSS-TRAN-IMPO-TRAN-TMP
+                    = ( ( ( CAP-TIT ( T )
+                         / RFTR-TIT-TRANSACCION )
+                         * EMIS-NUM-AMORTIZACIONES  )
+                        / EMIS-PLZO-PAGO-CUPON-RF )
+                        * RFTR-IMPO-TRANSACCION
+
+*               IF ECHOED
+*                  PERFORM 0000-DISPLAY-INT-NOM-X-CAPAS
+*               END-IF
+
+              COMPUTE RFTR-IMPO-INTERES-NOMINAL
+                    = RFTR-IMPO-INTERES-NOMINAL
+                    + WSS-TRAN-IMPO-TRAN-TMP
+
+* Limpieza del capital de la capa
+              COMPUTE
+              CAP-IMPO ( T )
+           =  CAP-IMPO ( T )
+           -  (( RFTR-IMPO-TRANSACCION * ( CAP-TIT ( T )  / RFTR-TIT-TRANSACCION ))
+               - WSS-TRAN-IMPO-TRAN-TMP
+              )
+
+              IF ECHOED
+                 PERFORM 0000-DISPLAY-INT-REAL-X-CAPAS
+              END-IF
+
+              COMPUTE WSS-TRAN-IMPO-TRAN-TMP ROUNDED
+                    = WSS-TRAN-IMPO-TRAN-TMP
+                  - ( CAP-IMPO ( T )
+                    * H-COCIENTE-IND )
+              COMPUTE RFTR-IMPO-INTERES-REAL
+                    = RFTR-IMPO-INTERES-REAL
+                    + WSS-TRAN-IMPO-TRAN-TMP
+
+              IF ECHOED
+                 PERFORM 0000-DISPLAY-INT-REAL-X-CAP-2
+              END-IF
+
+          END-IF
+      END-PERFORM.
+
+ 0000-COCIENTE.
+*==============
+ MOVE RFTR-FECH-FIN-OPERACION    TO WSS-F4-FECH-FIN
+ MOVE CAP-FECH-APLICACION ( T )  TO WSS-F4-FECH-INI
+ MOVE H-PREG-IND-I               TO WSS-F4-INPC-INI
+ MOVE H-PREG-IND-F               TO WSS-F4-INPC-FIN
+ DISPLAY WSS-FILLER4-H UPON HOME-TERM
+ DISPLAY WSS-FILLER4   UPON HOME-TERM.
+
+ 0000-DISPLAY-INT-NOM-X-CAPAS.
+      DISPLAY "--"
+      DISPLAY "INT NOM X CAP := (((TIT-CAP/TIT-TRAN)*DIAS)/PLZO)*IMPO"
+      MOVE WSS-TRAN-IMPO-TRAN-TMP  TO WSS-FILLER1-P1
+      MOVE CAP-TIT(T)              TO WSS-FILLER1-P2
+      MOVE RFTR-TIT-TRANSACCION    TO WSS-FILLER1-P3
+      MOVE EMIS-NUM-AMORTIZACIONES TO WSS-FILLER1-P4
+      MOVE EMIS-PLZO-PAGO-CUPON-RF TO WSS-FILLER1-P5
+      MOVE RFTR-IMPO-TRANSACCION   TO WSS-FILLER1-P6
+      DISPLAY WSS-FILLER1.
+
+ 0000-DISPLAY-INT-REAL-X-CAPAS.
+*==============================
+ MOVE RFTR-IMPO-INTERES-REAL TO WSS-F2-IR
+ MOVE WSS-TRAN-IMPO-TRAN-TMP TO WSS-F2-IN
+ MOVE CAP-IMPO ( T )         TO WSS-F2-IMPO
+ MOVE H-COCIENTE-IND         TO WSS-F2-CO
+ DISPLAY WSS-FILLER2-H.
+ DISPLAY WSS-FILLER2.
+
+ 0000-DISPLAY-INT-REAL-X-CAP-2.
+      MOVE RFTR-IMPO-INTERES-REAL TO WSS-F3-IR
+      DISPLAY WSS-FILLER3.
+
+ 2220-obten-TRNS.
+      EXEC SQL OPEN CUR_CVREFIS END-EXEC
+      IF SQLCODE = 0
+         PERFORM WITH TEST AFTER UNTIL SQLCODE NOT = 0
+            EXEC SQL FETCH CUR_CVREFIS
+               INTO :RFTR-FECH-FIN-OPERACION
+                   ,:TRAN-NUMF-TRANSACCION
+                   ,:RFTR-NUMF-TRANSACCION
+                   ,:RFTR-CVE-OPER
+                   ,:RFTR-IMPO-TRANSACCION
+                   ,:RFTR-CVE-TIPO-TRANSACCION
+                   ,:OPDI-CODN-TIPO-IMPORTE   indicator :I-INDICATOR-OPDISVE
+                   ,:OPDI-CODN-CUS            indicator :I-INDICATOR-OPDISVE
+                   ,:OPDI-CODN-EFE            indicator :I-INDICATOR-OPDISVE
+                   ,:RFTR-FECH-INI-OPERACION
+                   ,:RFTR-TIT-TRANSACCION
+                   ,:RFTR-PRECIO
+                   ,:RFTR-CVE-TIPO-VALOR
+                   ,:RFTR-TASA-INT-PROM-NOMINAL
+            END-EXEC
+            IF I-INDICATOR-OPDISVE = -1
+               IF RFTR-CVE-OPER = "ENTTITRA"
+                  MOVE ZEROES TO OPDI-CODN-TIPO-IMPORTE
+                  MOVE 1      TO OPDI-CODN-CUS
+                  MOVE ZEROES TO OPDI-CODN-EFE
+               ELSE
+                  MOVE ZEROES TO OPDI-CODN-TIPO-IMPORTE
+                  MOVE ZEROES TO OPDI-CODN-CUS
+                  MOVE ZEROES TO OPDI-CODN-EFE
+               END-IF
+            END-IF
+            IF SQLCODE = 0
+               ADD 1 TO IND-TRNS
+               MOVE RFTR-FECH-FIN-OPERACION    TO TRN-FECH-APLICACION (IND-TRNS)
+               MOVE RFTR-NUMF-TRANSACCION      TO TRN-FOLIO (IND-TRNS)
+               MOVE RFTR-CVE-OPER              TO TRN-CVE-OPER  (IND-TRNS)
+               MOVE RFTR-TIT-TRANSACCION       TO TRN-TIT (IND-TRNS)
+               MOVE RFTR-IMPO-TRANSACCION      TO TRN-IMPO (IND-TRNS)
+               MOVE OPDI-CODN-TIPO-IMPORTE     TO TRN-CODN-TIPO-IMPORTE (IND-TRNS)
+               MOVE OPDI-CODN-CUS              TO TRN-CODN-CUS (IND-TRNS)
+               MOVE OPDI-CODN-EFE              TO TRN-CODN-EFE (IND-TRNS)
+               MOVE RFTR-FECH-FIN-OPERACION    TO TRN-FECH-REGISTRO (IND-TRNS)
+               MOVE 0                          TO TRN-TMPO-REGISTRO (IND-TRNS)
+               MOVE 0                          TO TRN-PREC-TRANSACCION (IND-TRNS)
+               MOVE RFTR-CVE-TIPO-TRANSACCION  TO TRN-CVE-TPO-TRAN (IND-TRNS)
+               MOVE RFTR-TASA-INT-PROM-NOMINAL TO TRN-TASA (IND-TRNS)
+            ELSE
+               IF SQLCODE NOT = 100
+                  set ESQLERR to TRUE
+                  move 1000   to w-cc-compl-cd
+                  move 1      to w-cc-stop-opt
+                  DISPLAY PSS-NUM-COPIA " ERROR "
+                          SQLCODE " EN FETCH CUR_CVREFIS"
+                     upon HOME-TERM
+               END-IF
+            END-IF
+         END-PERFORM
+      ELSE
+         set ESQLERR to TRUE
+         move 1000   to w-cc-compl-cd
+         move 1      to w-cc-stop-opt
+         DISPLAY PSS-NUM-COPIA " ERROR " SQLCODE " EN OPEN CUR_CVREFIS"
+            upon HOME-TERM
+      END-IF.
+      INITIALIZE SQLCODE
+      EXEC SQL CLOSE CUR_CVREFIS END-EXEC.
+
+ 2200-Calcula-Interes-plazo-r.
+      MOVE H-FECH-INI TO W-DBDT-DATE-INI
+      MOVE H-FECH-FIN TO W-DBDT-DATE-FIN
+      PERFORM 8020-CALL-DAYSBTWDATES
+      initialize vrs-ess
+      move TRAN-NUM-PRODUCTO to ess-p
+      move EMIS-CODX-FORMULA-RF (1:17) to ess-emis
+      move EMIS-FECH-EMISION to ess-fech-emis
+      move H-FECH-INI to ess-fech-ini
+      move H-FECH-fin to ess-fech-fin
+      move W-DBDT-RETURN to ess-plzo-calc
+      move EMIS-PLZO-PAGO-CUPON-RF to ess-plzo-emis.
+
+ 3000-CLOSEDOWN.
+      MOVE "Fin De Ejecucion Cuponados. Copia"
+        TO ESS-MSG-OPER-L3-TXT-ERROR
+      MOVE PSS-NUM-COPIA
+        TO ESS-MSG-OPER-L3-TXT-ERROR (35:)
+      MOVE "Se procesaron: "
+        TO ESS-MSG-OPER-L4-TXT-ERROR
+      MOVE WSS-PROCESADOS
+        TO ESS-MSG-OPER-L4-TXT-ERROR (15:)
+      MOVE "Registros"
+        TO ESS-MSG-OPER-L4-TXT-ERROR (29:)
+      MOVE WSS-TRN-PROCESADOS
+        TO ESS-MSG-OPER-L4-TXT-ERROR (41:)
+      MOVE "Transacciones"
+        TO ESS-MSG-OPER-L4-TXT-ERROR (51:)
+      PERFORM 8000000-MENSAJES-OPERADOR.
+
+ 7000-OBTEN-PARAMETRO.
+      INITIALIZE WSS-PRM-VALOR
+      ENTER "GETPARAMTEXT"
+             USING  WSS-PRM-NOM(1:WSS-PRM-NOM-LNG)
+                    WSS-PRM-VALOR
+             GIVING WSS-PRM-RSL
+      INITIALIZE WSS-PRM-NOM-LNG WSS-PRM-NOM.
+
+ 7100-SEARCH-INDS.
+      INITIALIZE H-PREG-IND-I
+      MOVE "INPC" TO HUNI-CVE-INDICADOR-MERCADO
+      IF W-DBDT-RETURN = 1
+         MOVE "UDI" TO HUNI-CVE-INDICADOR-MERCADO.
+      SET INDS-INDEX TO 1
+      SEARCH WSS-INDS-TABLE VARYING INDS-INDEX
+          AT END
+             set EUNKNOWN to TRUE
+             move 1000   to w-cc-compl-cd
+             move 1      to w-cc-stop-opt
+             DISPLAY PSS-NUM-COPIA " Error: Falta valor '"
+                     HUNI-CVE-INDICADOR-MERCADO "' para la fecha:"
+                     W-DBDT-DATE-INI
+                upon HOME-TERM
+        WHEN IND-NUM-MERCADO(INDS-INDEX) = W-DBDT-RETURN
+         AND IND-FECH(INDS-INDEX) = W-DBDT-DATE-INI
+             MOVE IND-PRECIO(INDS-INDEX) TO H-PREG-IND-I
+      END-SEARCH.
+
+ 8000-CALL-TGETMYID.
+      ENTER TAL "TGETMYID"
+            USING WSS-PARA-TGMID-PROGFILE
+                  WSS-PARA-TGMID-PROCNAME
+                  WSS-PARA-TGMID-USERGROUP.
+
+ 8010-CALL-CHECKDATE.
+      CALL "CHECKDATE"
+           USING WSS-CHKDT-DATE
+                 WSS-CHKDT-ERR-RETURN
+        ON EXCEPTION
+           MOVE 1 TO WSS-CHKDT-ERR-RETURN.
+
+ 8020-CALL-DAYSBTWDATES.
+       CALL "DAYSBTWDATES"
+       USING W-DBDT-DATE-INI
+             W-DBDT-DATE-FIN
+             W-DBDT-RETURN
+        ON EXCEPTION
+           set EUNKNOWN to true
+           move 1000 to w-cc-compl-cd
+           move 1    to w-cc-stop-opt
+           DISPLAY PSS-NUM-COPIA " Err on DAYSBTWDATES "
+                   " ini= " W-DBDT-DATE-INI
+                   " fin= " W-DBDT-DATE-FIN
+              upon HOME-TERM
+       END-CALL.
+
+ 9010-select-SCARXCTO.
+      EXEC SQL
+           SELECT CASE WHEN CCTO_CANT_PORC_CARGO=0 THEN 0 ELSE 1 END
+            INTO :CCTO-CANT-PORC-CARGO
+            FROM =SCARXCTO
+            WHERE CCTO_NUM_CONTRATO=:CCTO-NUM-CONTRATO
+              AND CCTO_CVE_CARGO=:CCTO-CVE-CARGO
+            BROWSE ACCESS
+      END-EXEC
+      IF SQLCODE NOT = 100 and not = 0 and not = -8423
+         set ESQLERR to TRUE
+         move 1000 to w-cc-compl-cd
+         move 1    to w-cc-stop-opt
+         DISPLAY  PSS-NUM-COPIA " Err " sqlcode " on SELECT =SCARXCTO "
+                  " contrato: " CONT-NUM-USO-CONTRATO
+             upon HOME-TERM.
+
+ 9020-select-SCONTRAT.
+      EXEC SQL
+           SELECT CASE WHEN UPPER(TRIM(CLTE_CVE_ROL_CONTRATO))
+                  IN ("FIDU","FIHI")
+                    OR CONT_NUM_USO_CONTRATO IN (2,3,4,9)
+                       THEN 0 ELSE 1 END
+            INTO :CCTO-CANT-PORC-CARGO
+            FROM =SCONTRAT
+            LEFT JOIN =SCLIENTE ON
+                 (CONT_NUM_CONTRATO,CONT_NUM_PERSONA_PRIMER_TIT)
+                =(CLTE_NUM_CONTRATO,CLTE_NUM_PERSONA)
+            WHERE CONT_NUM_CONTRATO=:CONT-NUM-CONTRATO
+            BROWSE ACCESS
+      END-EXEC
+      IF SQLCODE NOT = 100 and not = 0 and not = -8423
+         set ESQLERR to TRUE
+         move 1000 to w-cc-compl-cd
+         move 1    to w-cc-stop-opt
+         DISPLAY  PSS-NUM-COPIA " Err " sqlcode " on SELECT =scontrat "
+                  " contrato: " CONT-NUM-USO-CONTRATO
+             upon HOME-TERM.
+
+ 9030-select-SEMISORA.
+      EXEC SQL
+           SELECT EMIS_CVE_UNIDAD_VALUADORA
+                , EMIS_BAND_COBRA_IMPUESTOS_RV
+            INTO :EMIS-CVE-UNIDAD-VALUADORA
+                ,:EMIS-BAND-COBRA-IMPUESTOS-RV
+            FROM =SEMISORA
+            WHERE EMIS_NUM_PRODUCTO
+                =:EMIS-NUM-PRODUCTO
+            BROWSE ACCESS
+      END-EXEC
+      IF SQLCODE NOT = 100 and not = 0 and not = -8423
+         set ESQLERR to TRUE
+         move 1000 to w-cc-compl-cd
+         move 1    to w-cc-stop-opt
+         DISPLAY PSS-NUM-COPIA " Err " sqlcode " on SELECT =semisora "
+               " PRODUCTO: " EMIS-NUM-PRODUCTO
+            upon HOME-TERM.
+
+ 9040-Select-FactorA.
+      MOVE 1 TO H-COCIENTE-IND
+      IF H-FECH-INICIAL NOT = H-FECH-FINAL
+         INITIALIZE WSS-DAYSBTWDATES-PARAMS
+         MOVE H-FECH-FINAL TO W-DBDT-DATE-INI
+         MOVE -1 TO WSS-SIGH-DAYS
+         CALL "DATEOFFSET"
+               USING W-DBDT-DATE-INI W-DBDT-DATE-INI WSS-SIGH-DAYS
+         MOVE 0 TO W-DBDT-RETURN
+         PERFORM 7100-SEARCH-INDS
+         MOVE H-PREG-IND-I TO H-PREG-IND-F
+         MOVE H-FECH-INICIAL TO W-DBDT-DATE-INI
+         MOVE -1 TO WSS-SIGH-DAYS
+         MOVE 0 TO W-DBDT-RETURN
+         CALL "DATEOFFSET"
+               USING W-DBDT-DATE-INI W-DBDT-DATE-INI WSS-SIGH-DAYS
+         PERFORM 7100-SEARCH-INDS
+         COMPUTE H-COCIENTE-IND
+               = H-PREG-IND-F
+               / H-PREG-IND-I.
+
+ 9050-Select-SPACUPON.
+      EXEC SQL
+           SELECT MAX(PACU_FECH_PAGO_CUPON)
+            INTO :PACU-FECH-PAGO-CUPON
+            FROM =SPACUPON
+            WHERE PACU_NUM_PRODUCTO=:PACU-NUM-PRODUCTO
+              AND PACU_FECH_PAGO_CUPON<:PACU-FECH-PAGO-CUPON
+           BROWSE ACCESS
+      END-EXEC
+      IF SQLCODE NOT = 100 and not = 0 and not = -8423
+         set ESQLERR to TRUE
+         move 1000   to w-cc-compl-cd
+         move 1      to w-cc-stop-opt
+         DISPLAY  PSS-NUM-COPIA " Err " sqlcode " on SELECT =SPACUPON "
+                " PRODUCTO: " PACU-NUM-PRODUCTO
+                " FECHA: "    PACU-FECH-PAGO-CUPON
+             upon HOME-TERM
+      END-IF.
+
+ 9060-select-MAS1MOVXDIA.
+      initialize  H-IMPO-TRANSACCION
+                  H-TOTAL-PAGOS
+                  H-TITULOS
+       EXEC SQL
+           SELECT SUM(RFTR_IMPO_TRANSACCION)
+                 ,COUNT(DISTINCT RFTR_NUMF_TRANSACCION)
+                 ,AVG(CASE WHEN RFTR_TIT_TRANSACCION = 0
+                      THEN CASE WHEN TRCO_TIT_TRANSACCION IS NULL
+                      THEN 0 ELSE TRCO_TIT_TRANSACCION END
+                      ELSE RFTR_TIT_TRANSACCION END)
+            INTO :H-IMPO-TRANSACCION
+                ,:H-TOTAL-PAGOS
+                ,:H-TITULOS
+            FROM =SREFISTR
+            JOIN =SOPDISVE ON (RFTR_CVE_OPER,1)
+                             =(OPDI_CVE_OPER_ORIGEN,OPDI_NUMF_SECUENCIA_OPER)
+       LEFT JOIN =SREFISTE ON (RFTR_CVE_TIPO_TRANSACCION,RFTR_CVE_OPER)
+                             =(RFTE_CVE_TIPO_TRANSACCION,RFTE_CVE_OPER)
+       LEFT JOIN =STRACOMP ON RFTR_NUMF_TRANSACCION
+                            =TRCO_NUMF_TRANSACCION
+            WHERE RFTR_NUM_CONTRATO=:RFTR-NUM-CONTRATO
+              AND RFTR_NUM_PRODUCTO=:RFTR-NUM-PRODUCTO
+              AND RFTR_FECH_FIN_OPERACION=:RFTR-FECH-FIN-OPERACION
+              AND RFTR_CVE_OPER<>"VTOCPARE"
+              AND RFTR_CVE_OPER<>"INICPARE"
+              AND RFTR_CVE_OPER<>"AMORPACA"
+              AND RFTE_CVE_OPER IS NULL
+              AND (OPDI_CODN_TIPO_IMPORTE=4
+               AND OPDI_CODN_CUS=0
+               AND OPDI_CODN_EFE=1)
+          BROWSE ACCESS
+      END-EXEC.
+      IF SQLCODE NOT = 0 AND NOT = -8423
+         set ESQLERR to TRUE
+         move 1000   to w-cc-compl-cd
+         move 1      to w-cc-stop-opt
+         display PSS-NUM-COPIA " Err " SQLCODE
+               " on 9060-select-MAS1MOVXDIA"
+               " contrato=" RFTR-NUM-CONTRATO
+               " producto=" RFTR-NUM-PRODUCTO
+               " fecha="    RFTR-FECH-FIN-OPERACION
+            upon HOME-TERM
+      end-if
+      if H-TOTAL-PAGOS = 0 OR
+         H-TITULOS = 0
+         set EUNKNOWN to true
+         move 1000 to w-cc-compl-cd
+         move 1    to w-cc-stop-opt
+         display PSS-NUM-COPIA " Err " SQLCODE
+               " on 9060-select-MAS1MOVXDIA (SIN TITULOS)"
+               " contrato=" RFTR-NUM-CONTRATO
+               " producto=" RFTR-NUM-PRODUCTO
+               " fecha="    RFTR-FECH-FIN-OPERACION
+            upon HOME-TERM
+      END-IF.
+
+ 9070-Insert-CREFISTR.
+      ADD 1 TO WSS-trn-PROCESADOS
+      EXEC SQL
+           INSERT INTO =CREFISTR
+           VALUES (:RFTR-ANIO-MES
+                  ,:RFTR-NUM-CONTRATO
+                  ,:RFTR-NUM-PRODUCTO
+                  ,:RFTR-CVE-TIPO-SALDO
+                  ,:RFTR-NUMF-TRANSACCION
+                  ,:RFTR-CVE-OPER
+                  ,:RFTR-CVE-TIPO-VALOR
+                  ,:RFTR-BAND-ENT-SAL
+                  ,:RFTR-IMPO-TRANSACCION
+                  ,:RFTR-TIT-TRANSACCION
+                  ,:RFTR-PLZO-DIAS
+                  ,:RFTR-PRECIO
+                  ,:RFTR-FECH-INI-OPERACION
+                  ,:RFTR-FECH-FIN-OPERACION
+                  ,:RFTR-IMPO-INTERES-NOMINAL
+                  ,:RFTR-IMPO-INTERES-REAL
+                  ,:RFTR-TASA-INT-PROM-NOMINAL
+                  ,:RFTR-IMPO-RETENCION
+                  ,:RFTR-CVE-TIPO-TRANSACCION)
+      For Repeatable access
+      END-EXEC.
+      IF SQLCODE NOT = 0 and SQLCODE NOT = 100 AND SQLCODE NOT = -8227
+         set ESQLERR to TRUE
+         move 1000   to w-cc-compl-cd
+         move 1      to w-cc-stop-opt
+         DISPLAY PSS-NUM-COPIA " Err " SQLCODE
+               " on Insert CREFISTR "
+               " folio= " RFTR-NUMF-TRANSACCION
+            upon HOME-TERM
+      ELSE
+         IF SQLCODE = -8227
+            PERFORM 9100-Update-CREFISTR
+         END-IF
+      end-if.
+
+ 9080-Insert-CREFISPR.
+      EXEC SQL
+           INSERT INTO =CREFISPR
+           VALUES (:RFPR-ANIO-MES
+                  ,:RFPR-NUM-CONTRATO
+                  ,:RFPR-NUM-PRODUCTO
+                  ,:RFPR-CVE-TIPO-SALDO
+                  ,:RFPR-CVE-TIPO-VALOR
+                  ,:RFPR-IMPO-SALDO-PROMEDIO
+                  ,:RFPR-IMPO-SALDO-INICIAL
+                  ,:RFPR-IMPO-SALDO-CIERRE
+                  ,:RFPR-IMPO-ENTRADAS
+                  ,:RFPR-IMPO-SALIDAS
+                  ,:RFPR-IMPO-INT-NOMINAL-GRAVADO
+                  ,:RFPR-IMPO-INT-REAL-GRAVADO
+                  ,:RFPR-IMPO-GAN-NOMINAL-GRAVADO
+                  ,:RFPR-IMPO-GAN-REAL-GRAVADO
+                  ,:RFPR-IMPO-INT-NOMINAL-EXENTO
+                  ,:RFPR-IMPO-INT-REAL-EXENTO
+                  ,:RFPR-IMPO-GAN-NOMINAL-EXENTO
+                  ,:RFPR-IMPO-GAN-REAL-EXENTO
+                  ,:RFPR-IMPO-DIVIDENDOS-EXTR
+                  ,:RFPR-IMPO-DIVIDENDOS-INTR
+                  ,:RFPR-IMPO-COMISIONES-RV
+                  ,:RFPR-IMPO-COSTO-PROMEDIO
+                  ,:RFPR-IMPO-COSTO-PROM-AJUSTADO
+                  ,:RFPR-IMPO-RETENCION
+                  ,:RFPR-TIT-INICIAL
+                  ,:RFPR-TIT-FINAL
+                  ,:RFPR-TIT-TEMPORAL
+                  ,:RFPR-FECH-ULT-MOVTO)
+                For Repeatable access
+      END-EXEC.
+      IF SQLCODE NOT = 0
+         set ESQLERR to TRUE
+         Move 1     to w-cc-stop-opt
+         Move 10000 to w-cc-compl-cd
+         DISPLAY PSS-NUM-COPIA " Err " SQLCODE
+               " on ins PR "
+               " am:" RFPR-ANIO-MES
+               " cto:" RFPR-NUM-CONTRATO
+               " prd:" RFPR-NUM-PRODUCTO
+               "  TS:" RFPR-CVE-TIPO-SALDO
+            upon HOME-TERM
+      end-if.
+
+ 9090-Update-CREFISPR.
+         PERFORM 9091-UPDATE-CREFISPR
+         perform 9092-UPDATE-CREFISPR
+         INITIALIZE RFPR-IMPO-ENTRADAS
+                    RFPR-IMPO-SALIDAS
+                    RFPR-IMPO-INT-NOMINAL-GRAVADO
+                    RFPR-IMPO-INT-REAL-GRAVADO
+                    RFPR-IMPO-GAN-NOMINAL-GRAVADO
+                    RFPR-IMPO-GAN-REAL-GRAVADO
+                    RFPR-IMPO-INT-NOMINAL-EXENTO
+                    RFPR-IMPO-INT-REAL-EXENTO
+                    RFPR-IMPO-GAN-NOMINAL-EXENTO
+                    RFPR-IMPO-GAN-REAL-EXENTO
+                    RFPR-IMPO-DIVIDENDOS-EXTR
+                    RFPR-IMPO-DIVIDENDOS-INTR
+                    RFPR-IMPO-COMISIONES-RV
+                    RFPR-IMPO-RETENCION.
+
+ 9091-UPDATE-CREFISPR.
+      EXEC SQL
+           UPDATE =CREFISPR
+           SET
+               RFPR_IMPO_INT_NOMINAL_GRAVADO  = :RFPR-IMPO-INT-NOMINAL-GRAVADO
+              ,RFPR_IMPO_INT_REAL_GRAVADO     = :RFPR-IMPO-INT-REAL-GRAVADO
+              ,RFPR_IMPO_GAN_NOMINAL_GRAVADO  = :RFPR-IMPO-GAN-NOMINAL-GRAVADO
+              ,RFPR_IMPO_GAN_REAL_GRAVADO     = :RFPR-IMPO-GAN-REAL-GRAVADO
+              ,RFPR_IMPO_INT_NOMINAL_EXENTO   = :RFPR-IMPO-INT-NOMINAL-EXENTO
+              ,RFPR_IMPO_INT_REAL_EXENTO      = :RFPR-IMPO-INT-REAL-EXENTO
+              ,RFPR_IMPO_GAN_NOMINAL_EXENTO   = :RFPR-IMPO-GAN-NOMINAL-EXENTO
+              ,RFPR_IMPO_GAN_REAL_EXENTO      = :RFPR-IMPO-GAN-REAL-EXENTO
+              ,RFPR_IMPO_DIVIDENDOS_EXTR      = :RFPR-IMPO-DIVIDENDOS-EXTR
+              ,RFPR_IMPO_DIVIDENDOS_INTR      = :RFPR-IMPO-DIVIDENDOS-INTR
+              ,RFPR_IMPO_COMISIONES_RV        = :RFPR-IMPO-COMISIONES-RV
+              ,RFPR_IMPO_COSTO_PROMEDIO       = :RFPR-IMPO-COSTO-PROMEDIO
+              ,RFPR_IMPO_COSTO_PROM_AJUSTADO  = :RFPR-IMPO-COSTO-PROM-AJUSTADO
+              ,RFPR_IMPO_RETENCION            = :RFPR-IMPO-RETENCION
+              ,RFPR_TIT_TEMPORAL              = :RFPR-TIT-TEMPORAL
+              ,RFPR_FECH_ULT_MOVTO            = :RFPR-FECH-ULT-MOVTO
+         WHERE RFPR_ANIO_MES       = :RFPR-ANIO-MES
+           AND RFPR_NUM_CONTRATO   = :RFPR-NUM-CONTRATO
+           AND RFPR_NUM_PRODUCTO   = :RFPR-NUM-PRODUCTO
+           AND RFPR_CVE_TIPO_SALDO = :RFPR-CVE-TIPO-SALDO
+           FOR STABLE ACCESS
+      END-EXEC.
+      IF SQLCODE NOT = 0 and SQLCODE NOT = 100
+         DISPLAY PSS-NUM-COPIA " Err " SQLCODE
+               " on upd PR "
+               " am:" RFPR-ANIO-MES
+               " cto:" RFPR-NUM-CONTRATO
+               " prd:" RFPR-NUM-PRODUCTO
+               "  TS:" RFPR-CVE-TIPO-SALDO
+            upon HOME-TERM
+         ENTER SQLCADISPLAY USING SQLCA
+         set ESQLERR to TRUE
+         move 1000   to w-cc-compl-cd
+         move 1      to w-cc-stop-opt
+      ELSE
+         IF SQLCODE = 100
+            MOVE 0 TO SQLCODE
+            PERFORM 9080-Insert-CREFISPR
+         END-IF
+      end-if.
+
+ 9092-UPDATE-CREFISPR.
+      MOVE RFPR-ANIO-MES TO H-RFPR-ANIO-MES
+      PERFORM VARYING H-RFPR-ANIO-MES FROM RFPR-ANIO-MES BY 1
+                UNTIL H-RFPR-ANIO-MES >
+                   (  FUNCTION INTEGER-PART
+                       ( RFPR-ANIO-MES / 100 )  * 100 ) + 12
+         PERFORM 9093-UPDATE-CREFISPR
+      END-PERFORM.
+
+ 9093-UPDATE-CREFISPR.
+      EXEC SQL
+           UPDATE =CREFISPR
+           SET
+               RFPR_IMPO_COSTO_PROMEDIO       = :RFPR-IMPO-COSTO-PROMEDIO
+              ,RFPR_IMPO_COSTO_PROM_AJUSTADO  = :RFPR-IMPO-COSTO-PROM-AJUSTADO
+              ,RFPR_TIT_TEMPORAL              = :RFPR-TIT-TEMPORAL
+              ,RFPR_FECH_ULT_MOVTO            = :RFPR-FECH-ULT-MOVTO
+         WHERE RFPR_ANIO_MES        = :H-RFPR-ANIO-MES
+           AND RFPR_NUM_CONTRATO   =  :RFPR-NUM-CONTRATO
+           AND RFPR_NUM_PRODUCTO   =  :RFPR-NUM-PRODUCTO
+           AND RFPR_CVE_TIPO_SALDO =  :RFPR-CVE-TIPO-SALDO
+           FOR STABLE ACCESS
+      END-EXEC.
+      move ZERO to sqlcode.
+
+ 9100-Update-CREFISTR.
+      EXEC SQL
+           UPDATE =CREFISTR
+           SET RFTR_CVE_OPER              = :RFTR-CVE-OPER
+             , RFTR_CVE_TIPO_VALOR        = :RFTR-CVE-TIPO-VALOR
+             , RFTR_BAND_ENT_SAL          = :RFTR-BAND-ENT-SAL
+             , RFTR_IMPO_TRANSACCION      = :RFTR-IMPO-TRANSACCION
+             , RFTR_TIT_TRANSACCION       = :RFTR-TIT-TRANSACCION
+             , RFTR_PLZO_DIAS             = :RFTR-PLZO-DIAS
+             , RFTR_PRECIO                = :RFTR-PRECIO
+             , RFTR_FECH_INI_OPERACION    = :RFTR-FECH-INI-OPERACION
+             , RFTR_FECH_FIN_OPERACION    = :RFTR-FECH-FIN-OPERACION
+             , RFTR_IMPO_INTERES_NOMINAL  = :RFTR-IMPO-INTERES-NOMINAL
+             , RFTR_IMPO_INTERES_REAL     = :RFTR-IMPO-INTERES-REAL
+             , RFTR_TASA_INT_PROM_NOMINAL = :RFTR-TASA-INT-PROM-NOMINAL
+             , RFTR_IMPO_RETENCION        = :RFTR-IMPO-RETENCION
+             , RFTR_CVE_TIPO_TRANSACCION  = :RFTR-CVE-TIPO-TRANSACCION
+         WHERE RFTR_ANIO_MES         = :RFTR-ANIO-MES
+           AND RFTR_NUM_CONTRATO     = :RFTR-NUM-CONTRATO
+           AND RFTR_NUM_PRODUCTO     = :RFTR-NUM-PRODUCTO
+           AND RFTR_CVE_TIPO_SALDO   = :RFTR-CVE-TIPO-SALDO
+           AND RFTR_NUMF_TRANSACCION = :RFTR-NUMF-TRANSACCION
+           FOR STABLE ACCESS
+      END-EXEC.
+      IF SQLCODE NOT = 0
+         set ESQLERR to TRUE
+         move 1000   to w-cc-compl-cd
+         move 1      to w-cc-stop-opt
+         DISPLAY PSS-NUM-COPIA " Err " SQLCODE
+               " on UPDATE CREFISTR "
+               " folio= " RFTR-NUMF-TRANSACCION
+            upon HOME-TERM
+      end-if.
+
+ 9100-update-srefistc.
+      EXEC SQL
+           UPDATE =SREFISTC
+           SET RFTC_FECH_ULT_MOVTO
+            = :RFTC-FECH-ULT-MOVTO
+             , RFTC_IMPO_COSTO_PROMEDIO
+            = :RFTC-IMPO-COSTO-PROMEDIO
+             , RFTC_IMPO_COSTO_PROM_AJUSTADO
+            = :RFTC-IMPO-COSTO-PROM-AJUSTADO
+         WHERE RFTC_NUMF_TRANSACCION
+            = :RFTC-NUMF-TRANSACCION
+           FOR STABLE ACCESS
+      END-EXEC.
+      IF SQLCODE NOT = 0 and SQLCODE NOT = 100
+         set ESQLERR to TRUE
+         move 1000   to w-cc-compl-cd
+         move 1      to w-cc-stop-opt
+         DISPLAY PSS-NUM-COPIA " Err " SQLCODE
+               " on Insert SREFISTC "
+               " folio= " RFTC-NUMF-TRANSACCION
+            upon HOME-TERM
+      ELSE
+         IF SQLCODE = 100
+            PERFORM 9070-Insert-SREFISTC
+         END-IF
+      end-if.
+
+ 9070-Insert-SREFISTC.
+      EXEC SQL
+           INSERT INTO =SREFISTC
+           VALUES (:RFTC-NUMF-TRANSACCION
+                  ,:RFTC-NUMF-TRANS-GENERADORA
+                  ,:RFTC-NUMF-ORDEN
+                  ,:RFTC-FECH-ULT-MOVTO
+                  ,:RFTC-IMPO-COSTO-PROMEDIO
+                  ,:RFTC-IMPO-COSTO-PROM-AJUSTADO)
+      For Repeatable access
+      END-EXEC.
+      IF SQLCODE NOT = 0
+         set ESQLERR to TRUE
+         move 1000   to w-cc-compl-cd
+         move 1      to w-cc-stop-opt
+         DISPLAY PSS-NUM-COPIA " Err " SQLCODE
+               " on Insert SREFISTC "
+               " folio= " RFTC-NUMF-TRANSACCION
+            upon HOME-TERM
+      end-if.
+
+ copy SetComplCd        OF $DESA15.ASITECTA.COMPCOB.
+ copy MENSAJES-OPERADOR OF $DESA12.SCOGLCPA.C85DEFPG.
