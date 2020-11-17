@@ -1,0 +1,55 @@
+CF41CBDICR_MN_02500.20160511
+-----------------------------------------------------------
+purge $DATA20.BDVCFDAT.CBOL05NO
+cobol85 /in  $data20.bdvcfFTA.cfreffis /$data20.bdvcfoja.cfreffis;nolist;errorfile err1908
+SQLCOMP /IN $DATA20.BDVCFOJA.cfreffis/CATALOG $DATA20.BDVCFCTA
+
+
+COMMENT 1 *** Borrar subset 
+sqlci;purgedata =ssubset;exit;
+
+COMMENT 2 *** Registrar Conctratos en Subset 
+sqlci;
+insert into =ssubset values (000341235);
+insert into =ssubset values (000460857);
+insert into =ssubset values (000496151);
+insert into =ssubset values (001074268);
+insert into =ssubset values (005549689);
+insert into =ssubset values (008073783);
+insert into =ssubset values (008093844);
+insert into =ssubset values (008093844);
+insert into =ssubset values (008097264);
+insert into =ssubset values (086133810);
+insert into =ssubset values (086135931);
+insert into =ssubset values (086158947);
+                             
+exit;
+
+COMMENT 3*** Borra de Journal los ctos que queremos procesar * solo pruebas*
+sqlci;delete from =sjournal where JOUR_NUM_CONTRATO
+in 
+(    
+000341235
+,000460857
+,000496151
+,001074268
+,005549689
+,008073783
+,008093844
+,008093844
+,008097264
+,086133810
+,086135931
+,086158947
+);
+;exIt;
+
+
+COMMENT 4*** proporcionar parametros
+param tpodiv ISREXT
+param empresa cbol
+param fide n
+param feche 05102000  
+param entsol c
+
+RUN $DATA20.BDVCFOJA.CFREFFIS /cpu 3,name $asis/

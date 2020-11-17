@@ -1,0 +1,63 @@
+purge $data20.bdvcfoja.cfreffis
+purge $data20.bdvcfdat.BANC06NO
+
+cobol85 /in  $data20.bdvcfFTA.cfreffis /$data20.bdvcfoja.cfreffis;nolist;errorfile err1908
+SQLCOMP /IN $DATA20.BDVCFOJA.cfreffis/CATALOG $DATA20.BDVCFCTA
+
+COMMENT 1 *** Borrar subset 
+sqlci;purgedata =ssubset;exit;
+
+COMMENT 2 *** Registrar Conctratos en Subset 
+sqlci;
+insert into =ssubset values (077018986);
+
+exit;
+
+COMMENT 3*** Borra de Journal los ctos que queremos procesar * solo pruebas*
+sqlci;delete from =sjournal where JOUR_NUM_CONTRATO
+in 
+(    
+ 077018986
+);
+;exIt;
+
+COMMENT 4*** proporcionar parametros
+param tpodiv resumen
+param empresa banc
+param fide n
+param feche 05102000  
+param entsol c
+
+
+RUN $DATA20.BDVCFOJA.CFREFFIS /cpu 3,name $asis/
+--------------------------------------------------------------------------------------
+purge $data20.bdvcfoja.cfreffis
+purge $data20.bdvcfdat.cbol06NO
+
+cobol85 /in  $data20.bdvcfFTA.cfreffis /$data20.bdvcfoja.cfreffis;nolist;errorfile err1908
+SQLCOMP /IN $DATA20.BDVCFOJA.cfreffis/CATALOG $DATA20.BDVCFCTA
+
+COMMENT 1 *** Borrar subset 
+sqlci;purgedata =ssubset;exit;
+
+COMMENT 2 *** Registrar Conctratos en Subset 
+sqlci;
+insert into =ssubset values (0341235);
+
+exit;
+
+COMMENT 3*** Borra de Journal los ctos que queremos procesar * solo pruebas*
+sqlci;delete from =sjournal where JOUR_NUM_CONTRATO
+in 
+(    
+ 0341235
+);
+;exIt;
+
+COMMENT 4*** proporcionar parametros
+param tpodiv resumen
+param empresa cbol
+param fide n
+param feche 05102000  
+param entsol c
+RUN $DATA20.BDVCFOJA.CFREFFIS /cpu 3,name $asis/
