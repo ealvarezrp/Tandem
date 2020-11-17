@@ -1,0 +1,522 @@
+?ENV COMMON;RUNNAMED;COMPACT;SYMBOLS;INSPECT;SAVE ALL
+?SAVEABEND
+?SQL (RELEASE2,PAGES 800);SQLMEM EXT
+?SEARCH $SYSTEM.SYSTEM.CBL85UTL
+?SEARCH $SYSTEM.SYSTEM.CLULIB
+?SEARCH $DCYC01.INFROJA0.LTALLIB
+?SEARCH $SYSTEM.SYSTEM.COBOLLIB
+?OPTIMIZE 2;NOWARN
+
+ IDENTIFICATION DIVISION.
+ PROGRAM-ID. CFREFFIS-DIVS.
+ AUTHOR.     ASISTICA - Alvarez Bastida, Eduardo
+                      & Barcenas Padilla, Victor Manuel
+                      & Cano Cano, Luis
+                      & Hamilton, Margaret
+                      - www.asistica.com
+ DATE-WRITTEN. (08JUL2016)
+ ENVIRONMENT DIVISION.
+ CONFIGURATION SECTION.
+
+ SPECIAL-NAMES.
+    FILE #TERM                      IS HOME-TERM
+    FILE $DATA20.BDVCFOJA.CFREFRFC  IS CFREFRFC-LIB
+    FILE $DCYC01.INFROJA0.LTALLIB   IS LTAL-LIB
+    FILE $SYSTEM.SYSTEM.COBOLLIB    IS COBOL-LIB.
+
+ INPUT-OUTPUT SECTION.
+ FILE-CONTROL.
+
+ SELECT FILE-SALIDA   ASSIGN TO #DYNAMIC
+        ORGANIZATION         IS SEQUENTIAL
+        ACCESS MODE          IS SEQUENTIAL
+        FILE STATUS          IS WS-FILE-STATUS.
+
+ DATA DIVISION.
+ FILE SECTION.
+
+ FD FILE-SALIDA
+    RECORD CONTAINS 250 CHARACTERS
+    LABEL RECORDS ARE OMITTED.
+    01 REGSALIDA             PIC X(250).
+
+ WORKING-STORAGE SECTION.
+
+
+ EXEC SQL INCLUDE SQLCA END-EXEC.
+ EXEC SQL INCLUDE SQLSA END-EXEC.
+ EXEC SQL BEGIN DECLARE SECTION END-EXEC.
+ EXEC SQL INVOKE =ENTIDAD  AS ENTIDAD-REG  END-EXEC.
+ EXEC SQL INVOKE =SAREACB  AS SAREACB-REG END-EXEC.
+ EXEC SQL INVOKE =SATRXCTO AS SATRXCTO-REG END-EXEC.
+ EXEC SQL INVOKE =SCODPOST AS SCODPOST-REG END-EXEC.
+ EXEC SQL INVOKE =SCTOFIDE AS SCTOFIDE-REG END-EXEC.
+ EXEC SQL INVOKE =SEDOPAIS AS SEDOPAIS-REG END-EXEC.
+ EXEC SQL INVOKE =SEMISORA AS SEMISORA-REG END-EXEC.
+ EXEC SQL INVOKE =SEMPNEGO AS SEMPNEGO-REG END-EXEC.
+ EXEC SQL INVOKE =SJOURNAL AS SJOURNAL-REG END-EXEC.
+ EXEC SQL INVOKE =SPAIS    AS SPAIS-REG    END-EXEC.
+ EXEC SQL INVOKE =SR2FISTT AS SR2FISTT-REG END-EXEC.
+ EXEC SQL INVOKE =SREFISAC AS SREFISAC-REG END-EXEC.
+ EXEC SQL INVOKE =SREFISCM AS SREFISCM-REG END-EXEC.
+ EXEC SQL INVOKE =SREFISDF AS SREFISDF-REG END-EXEC.
+ EXEC SQL INVOKE =SREFISDO AS SREFISDO-REG END-EXEC.
+ EXEC SQL INVOKE =SREFISDT AS SREFISDT-REG END-EXEC.
+ EXEC SQL INVOKE =SREFISMC AS SREFISMC-REG END-EXEC.
+ EXEC SQL INVOKE =SREFISPC AS SREFISPC-REG END-EXEC.
+ EXEC SQL INVOKE =SREFISPE AS SREFISPE-REG END-EXEC.
+ EXEC SQL INVOKE =SREFISRE AS SREFISRE-REG END-EXEC.
+ EXEC SQL INVOKE =SREFISTT AS SREFISTT-REG END-EXEC.
+ EXEC SQL INVOKE =SRFCATAL AS SRFCATAL-REG END-EXEC.
+ EXEC SQL INVOKE =SRFDISCL AS SRFDISCL-REC END-EXEC.
+ EXEC SQL INVOKE =SRFFOLMC AS SRFFOLMC-REG END-EXEC.
+ EXEC SQL INVOKE =SREFISFC AS SREFISFC-REG END-EXEC.
+
+ 01 H-NEGOCIO                      PIC X(02) VALUE SPACES.
+ 01 H-Liquidaciones.
+    02 hNumContrato                PIC 9(9).
+    02 hNumPersona                 PIC 9(9).
+    02 hCveTpoPersona              PIC X(4).
+    02 hNumInstrumento             PIC 9(9).
+    02 hDescInstrumento            PIC X(17).
+    02 hMesIniVigencia             PIC 99.
+    02 hMesFinVigencia             PIC 99.
+    02 hPorcDistribucion           PIC 9(2)V9(8).
+    02 hDividendoBrutoSujetoRet    PIC S9(16)V9(2).
+    02 hISRretenidoExtranjero      PIC S9(16)V9(2).
+    02 hTotalDividendo             PIC S9(16)V9(2).
+    02 hRetencion10ISRadivExt      PIC S9(16)V9(2).
+
+ EXEC SQL END DECLARE SECTION END-EXEC.
+ EXEC SQL CONTROL QUERY INTERACTIVE ACCESS OFF END-EXEC.
+
+ EXEC sql declare CUR_DIVS cursor for
+      SELECT rfpc_num_contrato
+            ,rfdf_num_persona
+            ,UPPER(TRIM(rfpe_cve_tipo_persona))
+            ,rfpc_num_producto
+            ,UPPER(TRIM(emis_cve_tipo_valor))||"-"||
+             TRIM(UPPER(emis_desc_valor))||"-"||
+             TRIM(UPPER(emis_cve_serie_valor))
+            ,CASE when rfac_fech_alta>rfac_anio*10000+100
+                   and rfac_fech_alta>19100101
+                  then cast(rfac_fech_alta/100   as numeric(6,0))
+                      -cast(rfac_fech_alta/10000 as numeric(4,0))*100
+                  else 1 END
+            ,rfac_anio_mes-cast(rfac_anio_mes/100 as numeric(4,0))*100
+            ,AVG(rfdf_porc_distribucion)/100
+            ,SUM(CASE when :jour-campo-ad2=1
+                      then cast(rfpc_impo_div_nac_gravad
+                         *:rffc-factor-piramidacion as numeric(18,2))
+                      when :jour-campo-ad2=2
+                      then cast(rfpc_impo_div_nac_exento
+                         *:rffc-factor-piramidacion as numeric(18,2))
+                      when :jour-campo-ad2=3
+                      then cast(rfpc_impo_div_nac_gravad
+                         *:rffc-factor-piramidacion as numeric(18,2))
+                          +cast(rfpc_impo_div_nac_exento
+                         *:rffc-factor-piramidacion as numeric(18,2))
+                      when :jour-campo-ad2 in (4,5)
+                      then rfpc_impo_div_ext_brut
+                 else 0 END)
+            *CAST(AVG(rfdf_porc_distribucion/100) as numeric(12,2))
+            ,SUM(CASE when :jour-campo-ad2=1
+                      then cast(rfpc_impo_div_nac_gravad
+                              *:rffc-factor-piramidacion
+                               -rfpc_impo_div_nac_gravad as numeric(18,2))
+                      when :jour-campo-ad2=2
+                      then cast(rfpc_impo_div_nac_exento
+                              *:rffc-factor-piramidacion
+                               -rfpc_impo_div_nac_exento as numeric(18,2))
+                      when :jour-campo-ad2=3
+                      then cast(rfpc_impo_div_nac_gravad
+                              *:rffc-factor-piramidacion
+                               -rfpc_impo_div_nac_gravad as numeric(18,2))
+                         + cast(rfpc_impo_div_nac_exento
+                              *:rffc-factor-piramidacion
+                               -rfpc_impo_div_nac_exento as numeric(18,2))
+                      when :jour-campo-ad2 in (4,5)
+                      then cast(CASE when trim(upper(emis_cve_tipo_valor))="52"
+                                     then 0 else rfpc_impo_isr_ext_acred END
+                           as numeric(18,2))
+                 else 0 END)
+            *CAST(AVG(rfdf_porc_distribucion/100) as numeric(12,2))
+            ,SUM(CASE when :jour-campo-ad2=1 then rfpc_impo_div_nac_gravad
+                      when :jour-campo-ad2=2 then rfpc_impo_div_nac_exento
+                      when :jour-campo-ad2=3 then rfpc_impo_div_nac_gravad
+                                     +rfpc_impo_div_nac_exento
+                      when :jour-campo-ad2 in (4,5)
+                      then rfpc_impo_div_ext_neto
+                 else 0 END)
+            *CAST(AVG(rfdf_porc_distribucion/100) as numeric(12,2))
+            ,SUM(CASE when :jour-campo-ad2=1 then rfpc_impo_isr_nac_adicional
+                      when :jour-campo-ad2=2 then 0
+                      when :jour-campo-ad2=3 then rfpc_impo_isr_nac_adicional
+                      when :jour-campo-ad2 in (4,5)
+                      then rfpc_impo_isr_ext_nacional
+                 else 0 END)
+            *CAST(AVG(rfdf_porc_distribucion/100) as numeric(12,2))
+       from =srefisac
+             left join =srefispc on rfac_num_contrato=rfpc_num_contrato
+             left join =semisora on rfpc_num_producto=emis_num_producto
+             left join =sempnego on rfac_cve_negocio=eneg_cve_negocio
+             left join =sctofide on rfac_num_contrato=fide_num_contrato
+             left join =srefisdf on (rfac_anio_mes, rfac_num_contrato)
+                                   =(rfdf_anio_mes, rfdf_num_contrato)
+             left join =srefispe
+                    on (rfdf_anio_mes,rfdf_num_contrato,rfdf_num_persona)
+                      =(rfpe_anio_mes,rfpe_num_contrato,rfpe_num_persona)
+             left join =sjournal
+                    on (rfpc_num_contrato,rfdf_num_persona,:jour-campo-ad2)
+                     = (jour_num_contrato
+                       ,jour_num_persona
+                       ,jour_campo_ad2)
+             left join =sareacb  on rfac_numf_area=arcb_numf_area
+             left join =satrxcto on (rfac_num_contrato,"DIST")
+                                   =(atxc_num_contrato,atxc_cve_atributo)
+       WHERE
+             UPPER(TRIM(rfac_cve_tipo_contrato)) in ("BA","TE")
+        and  rfac_num_uso_contrato not in (10,12,13,15,19,20,21,22)
+        and  SUBSTRING(arcb_cve_seguridad from 1 for 6)<>"003002"
+        and  SUBSTRING(arcb_cve_seguridad from 1 for 9)<>"003007004"
+        and  CASE when atxc_numf_atributo_univaluado is null then 0 else
+                       atxc_numf_atributo_univaluado END NOT in (2,3,4)
+        and (jour_num_id is NULL OR
+             jour_num_id=(select MAX(ufo.jour_num_id)
+                           from =sjournal UFO
+                           where UFO.jour_num_contrato=jour_num_contrato
+                             and UFO.jour_num_persona=jour_num_persona
+                             and UFO.jour_campo_ad2=jour_campo_ad2
+                          browse access))
+*--        and (jour_status is NULL OR
+*--             TRIM(UPPER(jour_status)) in ("CANCELADO","PEND.CANC"))
+        and CASE when fide_num_contrato is NULL then 0 else 1 end
+         = :fide-num-contrato
+        and (:fide-num-contrato = 1 OR
+              UPPER(TRIM(rfpe_cve_tipo_persona))<>"MORA")
+        and TRIM(UPPER(eneg_cve_empresa))= :eneg-cve-empresa
+        and rfac_anio=2015
+        and rfpc_anio_mes>=rfac_anio*100
+        and (   (:jour-campo-ad2=1
+                  and TRIM(UPPER(emis_cve_tipo_valor)) NOT in ("1A","1E","1I")
+                  and rfpc_impo_div_nac_gravad+rfpc_impo_isr_nac_adicional<>0)
+             OR (:jour-campo-ad2=2
+                  and TRIM(UPPER(emis_cve_tipo_valor)) NOT in ("1A","1E","1I")
+                  and rfpc_impo_div_nac_exento<>0)
+             OR (:jour-campo-ad2=3
+                  and TRIM(UPPER(emis_cve_tipo_valor)) NOT in ("1A","1E","1I")
+                  and rfpc_impo_div_nac_gravad+rfpc_impo_isr_nac_adicional
+                     +rfpc_impo_div_nac_exento<>0)
+             OR (:jour-campo-ad2 in (4,5)
+                  and TRIM(UPPER(emis_cve_tipo_valor)) in ("1A","1E","1I","52")
+                  and rfpc_impo_div_ext_brut+rfpc_impo_isr_ext_nacional<>0
+            ))
+    group by 1,2,3,4,5,6,7
+    order by 1,2,3
+  FOR BROWSE ACCESS
+  END-EXEC.
+
+ 01 ws-file-status.
+    02 stat-1                          pic  9.
+    02 stat-2                          pic  9.
+ 01 file-status redefines ws-file-status.
+    02 wss-file-status                 pic  x(02).
+       88 RECEIVE-FILE-OK              value "00".
+       88 SHORT-REC-READ               value "04".
+       88 CLOSE-FROM-REQUESTER         value "10".
+       88 INDEX-SEQ-VIOLATION          value "21".
+       88 DUPLICATE-RECORD             value "22".
+       88 NOT-FOUND                    value "23".
+       88 BOUNDARY-VIOLATION           value "24".
+       88 INVALID-KEY                  value "21" thru "24".
+       88 FILE-IS-FULL                 value "34".
+       88 POSITION-UNDEFINED           value "46".
+       88 IO-ERROR                     value "01" thru "99".
+
+ 01 w-define-info.
+    02 w-intname                           pic x(24).
+    02 w-class                             pic x(16).
+    02 w-attribute-name                    pic x(16).
+    02 w-extname                           pic x(36).
+    02 w-extname-len                       native-2.
+    02 w-error                             native-2.
+       88 ENOERR                           value 0.
+       88 EEOF                             value 1.
+       88 ESYSMSG                          value 6.
+       88 ENOCOMPLETION                    value 40.
+       88 ESQLERR                          value 197.
+       88 INVALIDPARAM                     value 512.
+       88 EBADFILE                         value 4197.
+       88 EUNKNOWN                         value 4208.
+       88 EDEFINEERR                       value 4212.
+       88 EERR                             values are -32767 thru -1,
+                                                           1 thru 32767.
+*** Manejo de Archivo de SALIDA
+ 01 WSS-KEY-ENVIO                      PIC S9(09) COMP.
+
+*** Variables Estandares
+ COPY WSS-VARS-STND-000 OF "$DESA12.SCOGLCPA.C85DEFPG".
+ COPY ESS-VARS-STND-000 OF "$DESA12.SCOGLCPA.C85DEFPG".
+ COPY ESS-VARS-STND-010 OF "$DESA12.SCOGLCPA.C85DEFPG".
+ COPY ESS-VARS-STND-020 OF "$DESA12.SCOGLCPA.C85DEFPG".
+
+*** Generales
+ 01 WSS-PROG-ID                    PIC  X(13)       VALUE "<<CFREFFIS>> ".
+ 01 WSS-ERROR-FILE                 PIC S9(04) COMP.
+ 01 WSS-FECH-REPORTE               PIC  9(08)       VALUE ZEROES.
+
+ 01 P-GETPARAMTEXT.
+    05 P-PARAMETRO                 PIC  X(12)        VALUE SPACES.
+    05 P-VALOR-ALFANUM             PIC  X(16)        VALUE SPACES.
+    05 P-VALOR-NUM                 PIC  9(09)        VALUE ZEROES.
+    05 P-RESULTADO                 PIC  S9999 COMP.
+    05 WSS-OPC-ENVIO               PIC  9(04)        VALUE ZEROES.
+    05 WSS-TPO-CONT                PIC  X(01)        VALUE SPACES.
+    05 WSS-EMPRESA                 PIC  X(04)        VALUE SPACES.
+    05 WSS-FEC-EXP                 PIC  9(08)        VALUE ZEROES.
+    05 WSS-HR-EXP                  PIC  9(08)        VALUE ZEROES.
+    05 WSS-NUM-RETEN               PIC  X(02)        VALUE SPACES.
+    05 WSS-TIP-EXP                 PIC  X(01)        VALUE SPACES.
+    05 WSS-EJERCICIO1              PIC  9999        VALUE ZEROES.
+    05 WSS-NUMERO-EXP              PIC  9(02)        VALUE ZEROES.
+
+
+ 01 WS88-COD-ERROR-SQL          PIC S9(04) COMP VALUE ZEROS.
+    88  WS88-SQL-EOF            VALUE 1.
+
+
+
+**----nombre del reporte
+ 01 REP-MENSAJERIA.
+   02 FILLER                           PIC  X(08)       VALUE "$DESA12.".
+   02 FILLER                           PIC  X(09)       VALUE "CHONGDAT.".
+   02 WSS-NOMBRE-GENERAR2.
+       05 WSS-TPO-ARCH2                PIC  X(02)      VALUE "MC".
+       05 WSS-NEGOCIO2                 PIC  X(01)      VALUE "G".
+       05 WSS-OP-ENVIO2                PIC  9(02)      VALUE ZEROES.
+       05 WSS-TPO-CPROCESADO2          PIC  X(01)      VALUE "A".
+       05 WSS-ANIOFISC02               PIC  9(02)      VALUE ZEROES.
+*--------------------------------------------------------------------------------------------
+*-CONTROL                                                                                        
+*--------------------------------------------------------------------------------------------
+ 01 WSS-CR                                 PIC 9(3) VALUE 0.
+ 01 WSS-CONTROL-REG.                                                                                 
+   02 WSS-CONTROL-PRODUCTO                 PIC  X(5) VALUE SPACES.
+   02 WSS-CONTROL-FILLER2                  PIC  X(2) VALUE SPACES.            
+   02 WSS-CONTROL-TRAMA                    PIC  X(3) VALUE SPACES.
+	 02 WSS-CONTROL-COD-REP                  PIC  X(5) VALUE "00000".                                           
+	 02 WSS-CONTROL-FOLIO-PAG                PIC  X(7) VALUE "0000001".
+	 02 WSS-CONTROL-PLAZA                    PIC  X(3) VALUE "001".
+	 02 WSS-CONTROL-CONSECUTIVO-REGISTRO     PIC  X(3) VALUE "000".
+	 02 WSS-CONTROL-MENSAJERIA               PIC  X(4) VALUE "0000".
+	 02 WSS-CONTROL-M1-HOJA-VALIDA           PIC  X(1) VALUE "S". 
+	 02 WSS-CONTROL-M2-FIN-GRUPO             PIC  X(1) VALUE "S".
+	 02 WSS-CONTROL-M3-CAMBIO-CR             PIC  X(1) VALUE "N".
+	 02 WSS-CONTROL-M4-NUM-HOJAS-1           PIC  X(1) VALUE "N".
+	 02 WSS-CONTROL-M5-NUM-HOJAS-2           PIC  X(1) VALUE "N".
+	 02 WSS-CONTROL-M6-NUM-HOJAS-4           PIC  X(1) VALUE "N".
+	 02 WSS-CONTROL-M7-NUM-HOJAS-8           PIC  X(1) VALUE "N".
+	 02 WSS-CONTROL-M8-SELECTIVA1            PIC  X(1) VALUE "N".
+	 02 WSS-CONTROL-M9-SELECTIVA2            PIC  X(1) VALUE "N".
+	 02 WSS-CONTROL-M10-SELECTIVA3           PIC  X(1) VALUE "N".
+	 02 WSS-CONTROL-M11-GENERAL              PIC  X(1) VALUE "N".
+	 02 WSS-CONTROL-IND-ENVIAR-RETENER       PIC  X(1) VALUE " ".
+   02 WSS-CONTROL-FILLER39                 PIC X(39) VALUE SPACES.
+*--------------------------------------------------------------------------------------------
+*-AG1
+*-------------------------------------------------------------------------------------------
+ 01 WSS-AG1-REG.
+    02 WSS-AG1-CONTROL              PIC X(100).  
+    02 WSS-AG1-NOMBRE               PIC X(80).
+    02 WSS-AG1-CLAVE-PRODUCTO       PIC X(07). 
+		02 WSS-AG1-CONTRATO             PIC X(18).
+		02 WSS-AG1-RFC                  PIC X(13).
+		02 WSS-AG1-CURP                 PIC X(18).
+		02 WSS-AG1-EMPRESA              PIC X(04). 
+		02 WSS-AG1-NACIONALIDAD         PIC X(10).
+		
+
+*=========================
+  EXTENDED-STORAGE SECTION.
+*=========================
+ 01 VALIDA-RFC-IN.
+   02 LINKD-NUM-CONTRATO                    PIC 9(09).
+   02 LINKD-NUM-PERSONA                     PIC 9(09).
+   02 LINKD-CVE-TIPO-PERSONA                PIC X(04).
+   02 LINKD-CODX-RFC                        PIC X(13).
+   02 LINKD-CODX-CURP                       PIC X(18).
+   02 LINKD-NACIONALIDAD                    PIC X(02).
+   02 LINKD-RFC-SAT                         PIC X(01).
+   02 LINKD-LIB-RESP                        PIC X(01).
+
+ PROCEDURE DIVISION.
+ DECLARATIVES.
+
+ DECL-FILE-SALIDA SECTION.
+    USE AFTER ERROR PROCEDURE ON FILE-SALIDA.
+    DISPLAY WSS-PROG-ID "Error en Archivo de SALIDA !!! Importante !!!, Error Cobol : "
+    WS-FILE-STATUS, " Error Guardian : " GUARDIAN-ERR UPON HOME-TERM.
+    ENTER TAL ABEND.
+ END DECLARATIVES.
+
+ Main.
+    PERFORM Inicio
+    if ENOERR perform Proceso.
+    PERFORM Fin
+ STOP RUN.
+
+ Inicio.
+     INITIALIZE entidad-reg sareacb-reg satrxcto-reg scodpost-reg sctofide-reg
+                sedopais-reg semisora-reg sempnego-reg sjournal-reg sr2fistt-reg
+                srefisac-reg srefiscm-reg srefisdf-reg srefisdo-reg srefisdt-reg
+                srefismc-reg srefispc-reg srefispe-reg srefisre-reg srefistt-reg
+                srfcatal-reg srfdiscl-rec srffolmc-reg srefisfc-reg spais-reg
+                hNumContrato hNumPersona hCveTpoPersona hNumInstrumento
+                hDescInstrumento hMesIniVigencia hMesFinVigencia hPorcDistribucion
+                hDividendoBrutoSujetoRet hISRretenidoExtranjero hTotalDividendo
+                hRetencion10ISRadivExt w-define-info
+     perform 8000-call-tgetmyid
+     perform 8005-maneja-parametros.
+
+ Proceso.
+      move 1.42857142 to rffc-factor-piramidacion
+      exec sql open CUR_DIVS end-exec
+      if sqlcode = 0
+         perform with test after until sqlcode = 100 or EERR
+            exec sql fetch CUR_DIVS
+               INTO :hNumContrato ,:hNumPersona ,:hCveTpoPersona ,:hNumInstrumento
+                   ,:hDescInstrumento ,:hMesIniVigencia ,:hMesFinVigencia
+                   ,:hPorcDistribucion ,:hDividendoBrutoSujetoRet
+                   ,:hISRretenidoExtranjero ,:hTotalDividendo
+                   ,:hRetencion10ISRadivExt
+            end-exec
+            if SQLCODE = 0 or 8417                
+                PERFORM 1000-TRAMAS-CFDI
+            else
+               if SQLCODE not = 100
+                  set ESQLERR to TRUE
+                  DISPLAY "*** ERROR " SQLCODE " DESPUES FETCH"
+                  upon HOME-TERM
+               end-if
+            end-if
+            initialize H-Liquidaciones
+         end-perform
+         EXEC SQL CLOSE CUR_DIVS END-EXEC
+      else
+         set ESQLERR to TRUE
+         DISPLAY "*** ERROR " SQLCODE " AL ABRIR CURSOR"
+         upon HOME-TERM
+      end-if.
+
+ Fin.
+     DISPLAY "Terminamos adios" upon HOME-TERM.
+
+ 1000-TRAMAS-CFDI.
+* display hNumContrato " - " hNumPersona  " - " hCveTpoPersona
+* " - " hDescInstrumento " - " hDividendoBrutoSujetoRet upon HOME-TERM
+    PERFORM 1001-GENERALES
+    PERFORM 1100-AC-AG1.
+      
+ 1001-GENERALES.
+    IF eneg_cve_negocio = "CBOL" THEN                                                                                                               
+       MOVE "CBDIC" TO WSS-CONTROL-PRODUCTO
+       MOVE "SCOTIA INVERLAT CASA DE BOLSA S.A. DE C.V., GRUPO FINANCIERO SCOTIABANK INVERLAT" TO xAG5NombreEmisor
+       MOVE "SIC920427R31" TO xAG5RFCemisor                                                                                                     
+       MOVE FUNCTION UPPER-CASE ("Bosque de Ciruelos 120 Piso 4, Bosques de las Lomas, Miguel Hidalgo, Distrito Federal  11700")  TO xAG6DirEMISOR =              
+    END IF                                                                                                                                 
+                                                                                                                                      
+   IF eneg_cve_negocio = "BANC" THEN                                                                                                              
+      MOVE "CBDIB" TO WSS-CONTROL-PRODUCTO
+      MOVE FUNCTION UPPER-CASE ("Scotiabank Inverlat, S.A.") TO xAG5NombreEmisor                                                                                                                                                                                                                      
+      MOVE "SIN9412025I4" TO xAG5RFCemisor                                                                                                     
+      MOVE FUNCTION UPPER-CASE ("Calle Lorenzo Boturini 202, Colonia Tránsito, Código Postal 06820, México D.F., Delegación Cuauhtémoc")  TO xAG6DirEMISOR =    
+   END IF.                                                                                                                                 .
+                                                                                                                                    
+ 1002-AC-CONTROL.
+     ADD 1 TO WSS-CR
+     MOVE WSS-CR TO WSS-CONTROL-IMP-CONSECUTIVO-REGISTRO.                                               
+ 1100-AC-AG1.           
+      PERFORM 1002-AC-CONTROL
+      MOVE "AG1" TO WSS-CONTROL-TRAMA                           
+      MOVE "ALVAREZ BASTIDA EDUARDO" TO WSS-AG1-NOMBRE        
+      MOVE WSS-CONTROL-PRODUCTO TO WSS-AG1-CLAVE-PRODUCTO
+      MOVE hNumContrato TO WSS-AG1-CONTRATO      
+      MOVE "AABE701003" TO WSS-AG1-RFC           
+      MOVE "" TO WSS-AG1-CURP          
+      MOVE eneg_cve_negocio TO WSS-AG1-EMPRESA       
+      MOVE "MEXICANA" TO WSS-AG1-NACIONALIDAD        
+      STRING  WSS-CONTROL-REG ,WSS-AG1-REG INTO REGSALIDA
+      
+      DISPLAY REGSALIDA.
+    
+ 8005-maneja-parametros.
+      set ENOERR to TRUE
+      initialize jour-campo-ad2 eneg-cve-empresa fide-num-contrato
+      move "EMPRESA" to p-parametro
+      perform 8010-parametro-alfanum
+      move p-valor-alfanum to eneg-cve-empresa
+      if eneg-cve-empresa not = "CBOL" and "BANC"
+         set INVALIDPARAM to TRUE
+         move "Los valores para el parametro 'empresa' deben ser 'CBOL'"
+            to ess-msg-oper-l3-txt-error
+         move "o 'BANC'"
+            to ess-msg-oper-l3-txt-error (57:)
+         perform 8000000-mensajes-operador.
+      if ENOERR
+         move "TPODIV" to p-parametro
+         perform 8010-parametro-alfanum
+         move 99 to jour-campo-ad2
+         evaluate p-valor-alfanum
+             when "NOQFIN"     move 1 to jour-campo-ad2
+             when "QFIN"       move 2 to jour-campo-ad2
+             when "PIRAMIDADO" move 3 to jour-campo-ad2
+             when "ISRNAC"     move 4 to jour-campo-ad2
+             when "ISREXT"     move 5 to jour-campo-ad2
+             when "RESUMEN"    move 6 to jour-campo-ad2
+             when  other move 99 to jour-campo-ad2
+         end-evaluate
+         if jour-campo-ad2 = 99
+            set INVALIDPARAM to TRUE
+            move "Los valores para el parametro 'tpodiv' deben ser 'NOQFIN'"
+               to ess-msg-oper-l3-txt-error
+            move ",'QFIN',"
+              to ess-msg-oper-l3-txt-error (57:)
+            move "'PIRAMIDADO','ISRNAC','ISREXT' o 'RESUMEN'"
+               to ess-msg-oper-l4-txt-error
+            perform 8000000-mensajes-operador.
+
+      if ENOERR
+         move "FIDE" to p-parametro
+         perform 8010-parametro-alfanum
+         move 99 to fide-num-contrato
+         evaluate FUNCTION UPPER-CASE(p-valor-alfanum)
+             when "N" move 0 to fide-num-contrato
+             when "S" move 1 to fide-num-contrato
+             when  other move 99 to fide-num-contrato
+         end-evaluate
+         if fide-num-contrato = 99
+            set INVALIDPARAM to TRUE
+            move "Los valores para el parametro 'fide' deben ser 'N' o 'S'"
+               to ess-msg-oper-l3-txt-error
+            perform 8000000-mensajes-operador.
+
+ 8000-CALL-TGETMYID.
+      ENTER TAL "TGETMYID" USING WSS-PARA-TGMID-PROGFILE
+      WSS-PARA-TGMID-PROCNAME WSS-PARA-TGMID-USERGROUP.
+
+ 8010-PARAMETRO-ALFANUM.
+      INITIALIZE P-VALOR-ALFANUM P-VALOR-NUM P-RESULTADO
+      MOVE FUNCTION UPPER-CASE(P-PARAMETRO) TO P-PARAMETRO
+      ENTER GETPARAMTEXT
+          USING P-PARAMETRO P-VALOR-ALFANUM
+         GIVING P-RESULTADO
+      MOVE FUNCTION UPPER-CASE (P-VALOR-ALFANUM)
+        TO P-VALOR-ALFANUM.
+
+ 8013-PARAMETRO-NUM.
+      INITIALIZE P-VALOR-ALFANUM P-VALOR-NUM P-RESULTADO
+      ENTER GETPARAMTEXT
+          USING P-PARAMETRO  P-VALOR-NUM
+         GIVING P-RESULTADO.
+
+ COPY MENSAJES-OPERADOR OF "$DESA12.SCOGLCPA.C85DEFPG".

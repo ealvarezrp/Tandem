@@ -1,0 +1,2599 @@
+?ENV COMMON;RUNNAMED;COMPACT;SYMBOLS;INSPECT;SAVE ALL
+?SAVEABEND
+?SQL (RELEASE2,PAGES 800);SQLMEM EXT
+?SEARCH $SYSTEM.SYSTEM.CBL85UTL
+?SEARCH $SYSTEM.SYSTEM.CLULIB
+?SEARCH $DCYC01.INFROJA0.LTALLIB
+?SEARCH $SYSTEM.SYSTEM.COBOLLIB
+?SEARCH $DATA20.BDVCFOJA.CFREFRFC
+
+?OPTIMIZE 2;NOWARN
+
+ IDENTIFICATION DIVISION.
+ PROGRAM-ID. CFREFFIS-DIVS.
+ AUTHOR.     ASISTICA - Alvarez Bastida, Eduardo
+                      & Barcenas Padilla, Victor Manuel
+                      & Cano, Luis
+                      & Hamilton, Margaret
+                      - www.asistica.com
+ DATE-WRITTEN. (08JUL2016)
+ ENVIRONMENT DIVISION.
+ CONFIGURATION SECTION.
+
+ SPECIAL-NAMES.
+    FILE #TERM                      IS HOME-TERM
+    FILE $DATA20.BDVCFOJA.CFREFRFC  IS CFREFRFC-LIB
+    FILE $DCYC01.INFROJA0.LTALLIB   IS LTAL-LIB
+    FILE $SYSTEM.SYSTEM.COBOLLIB    IS COBOL-LIB.
+
+ INPUT-OUTPUT SECTION.
+ FILE-CONTROL.
+
+ SELECT FILE-SALIDA   ASSIGN TO #DYNAMIC
+        ORGANIZATION         IS SEQUENTIAL
+        ACCESS MODE          IS SEQUENTIAL
+        FILE STATUS          IS WS-FILE-STATUS.
+
+ DATA DIVISION.
+ FILE SECTION.
+
+ FD FILE-SALIDA
+    RECORD CONTAINS 250 CHARACTERS
+    LABEL RECORDS ARE OMITTED.
+    01 REGSALIDA             PIC X(250).
+
+ WORKING-STORAGE SECTION.
+
+ EXEC SQL INCLUDE SQLCA END-EXEC.
+ EXEC SQL INCLUDE SQLSA END-EXEC.
+ EXEC SQL BEGIN DECLARE SECTION END-EXEC.
+ EXEC SQL INVOKE =ENTIDAD  AS ENTIDAD-REG  END-EXEC.
+ EXEC SQL INVOKE =SAREACB  AS SAREACB-REG  END-EXEC.
+ EXEC SQL INVOKE =SATRXCTO AS SATRXCTO-REG END-EXEC.
+ EXEC SQL INVOKE =SCODPOST AS SCODPOST-REG END-EXEC.
+ EXEC SQL INVOKE =SCTOFIDE AS SCTOFIDE-REG END-EXEC.
+ EXEC SQL INVOKE =SEDOPAIS AS SEDOPAIS-REG END-EXEC.
+ EXEC SQL INVOKE =SEMISORA AS SEMISORA-REG END-EXEC.
+ EXEC SQL INVOKE =SEMPNEGO AS SEMPNEGO-REG END-EXEC.
+ EXEC SQL INVOKE =SJOURNAL AS SJOURNAL-REG END-EXEC.
+ EXEC SQL INVOKE =SPAIS    AS SPAIS-REG    END-EXEC.
+ EXEC SQL INVOKE =SR2FISTT AS SR2FISTT-REG END-EXEC.
+ EXEC SQL INVOKE =SREFISAC AS SREFISAC-REG END-EXEC.
+ EXEC SQL INVOKE =SREFISCM AS SREFISCM-REG END-EXEC.
+ EXEC SQL INVOKE =SREFISDF AS SREFISDF-REG END-EXEC.
+ EXEC SQL INVOKE =SREFISDO AS SREFISDO-REG END-EXEC.
+ EXEC SQL INVOKE =SREFISDT AS SREFISDT-REG END-EXEC.
+ EXEC SQL INVOKE =SREFISMC AS SREFISMC-REG END-EXEC.
+ EXEC SQL INVOKE =SREFISPC AS SREFISPC-REG END-EXEC.
+ EXEC SQL INVOKE =SREFISPE AS SREFISPE-REG END-EXEC.
+ EXEC SQL INVOKE =SREFISRE AS SREFISRE-REG END-EXEC.
+ EXEC SQL INVOKE =SREFISTT AS SREFISTT-REG END-EXEC.
+ EXEC SQL INVOKE =SRFCATAL AS SRFCATAL-REG END-EXEC.
+ EXEC SQL INVOKE =SRFDISCL AS SRFDISCL-REC END-EXEC.
+ EXEC SQL INVOKE =SRFFOLMC AS SRFFOLMC-REG END-EXEC.
+ EXEC SQL INVOKE =SREFISFC AS SREFISFC-REG END-EXEC.
+
+ 01 H-NEGOCIO                      PIC X(2) VALUE SPACES.
+ 01 H-FECHA-HOY                    PIC 9(8).
+ 01 H-HORA-HOY                     PIC 9(8).
+ 01 H-WSS-FOLIO                    PIC X(36).
+ 01 hNumPersonaAnt                 PIC 9(9).
+ 01 hNumContratoAnt                PIC 9(9).
+ 01 hSolicitaCFDI                  PIC X(1) VALUE SPACES.
+    88 REQ-CLTE                    value "C".
+    88 REQ-EMISOR                  value "E".
+ 01 hFechExpedicion.
+    02 hFechExpMM                  PIC 99.
+    02 hFechExpDD                  PIC 99.
+    02 hFechExpHH                  PIC 99.
+    02 hFechExpMI                  PIC 99.
+ 01 H-Resumen.
+    02 hDivExtBruto-Col1           PIC S9(16)V9(2).
+    02 hDIvExtISRadi-Col2          PIC S9(16)V9(2).
+    02 hDIvNacNetoGrav-Col3        PIC S9(16)V9(2).
+    02 hDIvNacGravISR-Col4         PIC S9(16)V9(2).
+    02 hDIvNacExenNeto-Col5        PIC S9(16)V9(2).
+    02 hDIvExtAcreditable-Col6     PIC S9(16)V9(2).
+    02 hDIvExtISRCorp-Col7         PIC S9(16)V9(2).
+    02 hDIvNacGrossup-Col8         PIC S9(16)V9(2).
+    02 hDIvNacISRCorp-Col9         PIC S9(16)V9(2).
+ 01 H-Liquidaciones.
+    02 hNumContrato                PIC 9(9).
+    02 hNumPersona                 PIC 9(9).
+    02 hCveTpoPersona              PIC X(4).
+    02 hCveRolCto                  PIC X(4).
+    02 hCveRFC                     PIC X(13).
+    02 hNombrePersona              PIC X(135).
+    02 hNacionalidad               PIC X(2).
+    02 hNumInstrumento             PIC 9(9).
+    02 hDescInstrumento            PIC X(17).
+    02 hMesIniVigencia             PIC 99.
+    02 hMesFinVigencia             PIC 99.
+    02 hTpoProceso                 PIC X.
+    02 hPorcDistribucion           PIC 9(2)V9(8).
+    02 hDividendoBrutoSujetoRet    PIC S9(16)V9(2).
+    02 hISRretenidoExtranjero      PIC S9(16)V9(2).
+    02 hTotalDividendo             PIC S9(16)V9(2).
+    02 hRetencion10ISRadivExt      PIC S9(16)V9(2).
+    02 hInfoDomicilio.
+       03 hNumEstado               PIC 9(4).
+       03 hCodxPostal              PIC X(8).
+       03 hCvePais                 PIC X(2).
+       03 hTxtDelegacionMunicipio  PIC X(25).
+       03 hTxtCalleNum             PIC X(45).
+       03 hTxtColonia              PIC X(30).
+       03 hNumCentroReparto        PIC 9(5).
+       03 hDescEstado              PIC X(45).
+
+ EXEC SQL END DECLARE SECTION END-EXEC.
+ EXEC SQL CONTROL QUERY INTERACTIVE ACCESS OFF END-EXEC.
+
+ EXEC sql declare CUR_DIVS cursor for
+      SELECT rfpc_num_contrato
+            ,rfdf_num_persona
+            ,UPPER(TRIM(rfpe_cve_tipo_persona))
+            ,UPPER(TRIM(rfpe_cve_rol_contrato))
+            ,UPPER(TRIM(rfdf_codx_rfc_cfdi))
+            ,CASE WHEN SUBSTRING(TRIM(UPPER(rfpe_cve_tipo_persona))
+                  from 1 for 1)="F" THEN
+                  TRIM(UPPER(rfpe_nomb_apellido_paterno))||" "||
+                  TRIM(UPPER(rfpe_nomb_apellido_materno))||" "||
+                  TRIM(UPPER(rfpe_nomb_persona_fisica))
+                  ELSE TRIM(UPPER(rfpe_nomb_razon_social)) END
+            ,UPPER(TRIM(rfpe_cve_pais_nacionalidad))
+            ,rfpc_num_producto
+            ,UPPER(TRIM(emis_cve_tipo_valor))||"-"||
+             TRIM(UPPER(emis_desc_valor))||"-"||
+             TRIM(UPPER(emis_cve_serie_valor))
+            ,CASE when rfac_fech_alta>rfac_anio*10000+100
+                   and rfac_fech_alta>19100101
+                  then cast(rfac_fech_alta/100   as numeric(6,0))
+                      -cast(rfac_fech_alta/10000 as numeric(4,0))*100
+                  else 1 END
+            ,rfac_anio_mes-cast(rfac_anio_mes/100 as numeric(4,0))*100
+            ,CASE WHEN jour_num_id is NULL THEN "E" ELSE "R" END
+            ,AVG(rfdf_porc_distribucion)/100
+            ,SUM(CASE when :jour-campo-ad2=1
+                      then cast(rfpc_impo_div_nac_gravad
+                         *:rffc-factor-piramidacion as numeric(18,2))
+                      when :jour-campo-ad2=2
+                      then cast(rfpc_impo_div_nac_exento
+                         *:rffc-factor-piramidacion as numeric(18,2))
+                      when :jour-campo-ad2=3
+                      then cast(rfpc_impo_div_nac_gravad
+                         *:rffc-factor-piramidacion as numeric(18,2))
+                          +cast(rfpc_impo_div_nac_exento
+                         *:rffc-factor-piramidacion as numeric(18,2))
+                      when :jour-campo-ad2 in (4,5)
+                      then rfpc_impo_div_ext_brut
+                 else 0 END)
+            *CAST(AVG(rfdf_porc_distribucion/100) as numeric(12,2))
+            ,SUM(CASE when :jour-campo-ad2=1
+                      then cast(rfpc_impo_div_nac_gravad
+                              *:rffc-factor-piramidacion
+                               -rfpc_impo_div_nac_gravad as numeric(18,2))
+                      when :jour-campo-ad2=2
+                      then cast(rfpc_impo_div_nac_exento
+                              *:rffc-factor-piramidacion
+                               -rfpc_impo_div_nac_exento as numeric(18,2))
+                      when :jour-campo-ad2=3
+                      then cast(rfpc_impo_div_nac_gravad
+                              *:rffc-factor-piramidacion
+                               -rfpc_impo_div_nac_gravad as numeric(18,2))
+                         + cast(rfpc_impo_div_nac_exento
+                              *:rffc-factor-piramidacion
+                               -rfpc_impo_div_nac_exento as numeric(18,2))
+                      when :jour-campo-ad2 in (4,5)
+                      then cast(CASE when trim(upper(emis_cve_tipo_valor))="52"
+                                     then 0 else rfpc_impo_isr_ext_acred END
+                           as numeric(18,2))
+                 else 0 END)
+            *CAST(AVG(rfdf_porc_distribucion/100) as numeric(12,2))
+            ,SUM(CASE when :jour-campo-ad2=1 then rfpc_impo_div_nac_gravad
+                      when :jour-campo-ad2=2 then rfpc_impo_div_nac_exento
+                      when :jour-campo-ad2=3 then rfpc_impo_div_nac_gravad
+                                     +rfpc_impo_div_nac_exento
+                      when :jour-campo-ad2 in (4,5)
+                      then rfpc_impo_div_ext_neto
+                 else 0 END)
+            *CAST(AVG(rfdf_porc_distribucion/100) as numeric(12,2))
+            ,SUM(CASE when :jour-campo-ad2=1 then rfpc_impo_isr_nac_adicional
+                      when :jour-campo-ad2=2 then 0
+                      when :jour-campo-ad2=3 then rfpc_impo_isr_nac_adicional
+                      when :jour-campo-ad2 in (4,5)
+                      then rfpc_impo_isr_ext_nacional
+                 else 0 END)
+            *CAST(AVG(rfdf_porc_distribucion/100) as numeric(12,2))
+       from =srefisac
+             left join =srefispc on rfac_num_contrato=rfpc_num_contrato
+             left join =semisora on rfpc_num_producto=emis_num_producto
+             left join =sempnego on rfac_cve_negocio=eneg_cve_negocio
+             left join =sctofide on rfac_num_contrato=fide_num_contrato
+             left join =srefisdf on (rfac_anio_mes, rfac_num_contrato)
+                                   =(rfdf_anio_mes, rfdf_num_contrato)
+             left join =srefispe
+                    on (rfdf_anio_mes,rfdf_num_contrato,rfdf_num_persona)
+                      =(rfpe_anio_mes,rfpe_num_contrato,rfpe_num_persona)
+             left join =sjournal
+                    on (rfpc_num_contrato,rfdf_num_persona,:jour-campo-ad2)
+                     = (jour_num_contrato
+                       ,jour_num_persona
+                       ,jour_campo_ad2)
+             left join =sareacb  on rfac_numf_area=arcb_numf_area
+             left join =satrxcto on (rfac_num_contrato,"DIST")
+                                   =(atxc_num_contrato,atxc_cve_atributo)
+       WHERE
+             UPPER(TRIM(rfac_cve_tipo_contrato)) in ("BA","TE")
+        and  rfac_num_uso_contrato not in (10,12,13,15,19,20,21,22)
+        and  SUBSTRING(arcb_cve_seguridad from 1 for 6)<>"003002"
+        and  SUBSTRING(arcb_cve_seguridad from 1 for 9)<>"003007004"
+        and  CASE when atxc_numf_atributo_univaluado is null then 0 else
+                       atxc_numf_atributo_univaluado END NOT in (2,3,4)
+        and (jour_num_id is NULL OR
+             jour_num_id=(select MAX(ufo.jour_num_id)
+                           from =sjournal UFO
+                           where UFO.jour_num_contrato=jour_num_contrato
+                             and UFO.jour_num_persona=jour_num_persona
+                             and UFO.jour_campo_ad2=jour_campo_ad2
+                          browse access))
+           and (jour_status is NULL OR
+                TRIM(UPPER(jour_status)) in ("CANCELADO","PEND.CANC"))
+        and CASE when fide_num_contrato is NULL then 0 else 1 end
+         = :fide-num-contrato
+        and (:fide-num-contrato = 1 OR
+              UPPER(TRIM(rfpe_cve_tipo_persona))<>"MORA")
+        and TRIM(UPPER(eneg_cve_empresa))= :eneg-cve-empresa
+        and rfac_anio=2015
+        and rfpc_anio_mes>=rfac_anio*100
+        and (   (:jour-campo-ad2=1
+                  and TRIM(UPPER(emis_cve_tipo_valor)) NOT in ("1A","1E","1I")
+                  and rfpc_impo_div_nac_gravad+rfpc_impo_isr_nac_adicional<>0)
+             OR (:jour-campo-ad2=2
+                  and TRIM(UPPER(emis_cve_tipo_valor)) NOT in ("1A","1E","1I")
+                  and rfpc_impo_div_nac_exento<>0)
+             OR (:jour-campo-ad2=3
+                  and TRIM(UPPER(emis_cve_tipo_valor)) NOT in ("1A","1E","1I")
+                  and rfpc_impo_div_nac_gravad+rfpc_impo_isr_nac_adicional
+                     +rfpc_impo_div_nac_exento<>0)
+             OR (:jour-campo-ad2 in (4,5)
+                  and TRIM(UPPER(emis_cve_tipo_valor)) in ("1A","1E","1I","52")
+                  and rfpc_impo_div_ext_brut+rfpc_impo_isr_ext_nacional<>0
+            ))
+    group by 1,2,3,4,5,6,7,8,9,10,11,12
+    order by 1,2,9
+         FOR BROWSE ACCESS
+ END-EXEC.
+
+ EXEC sql declare CUR_RESUMEN cursor for
+      SELECT rfpc_num_contrato
+            ,rfdf_num_persona
+            ,UPPER(TRIM(rfpe_cve_tipo_persona))
+            ,UPPER(TRIM(rfpe_cve_rol_contrato))
+            ,UPPER(TRIM(rfdf_codx_rfc_cfdi))
+            ,CASE WHEN SUBSTRING(TRIM(UPPER(rfpe_cve_tipo_persona))
+                  from 1 for 1)="F" THEN
+                  TRIM(UPPER(rfpe_nomb_apellido_paterno))||" "||
+                  TRIM(UPPER(rfpe_nomb_apellido_materno))||" "||
+                  TRIM(UPPER(rfpe_nomb_persona_fisica))
+                  ELSE TRIM(UPPER(rfpe_nomb_razon_social)) END
+            ,UPPER(TRIM(rfpe_cve_pais_nacionalidad))
+            ,CASE when rfac_fech_alta>rfac_anio*10000+100
+                   and rfac_fech_alta>19100101
+                  then cast(rfac_fech_alta/100   as numeric(6,0))
+                      -cast(rfac_fech_alta/10000 as numeric(4,0))*100
+                  else 1 END
+            ,rfac_anio_mes-cast(rfac_anio_mes/100 as numeric(4,0))*100
+            ,AVG(rfdf_porc_distribucion)/100
+            ,SUM(rfpc_impo_div_ext_brut)
+            *CAST(AVG(rfdf_porc_distribucion/100) as numeric(12,2))
+            ,SUM(rfpc_impo_isr_ext_nacional)
+            *CAST(AVG(rfdf_porc_distribucion/100) as numeric(12,2))
+            ,SUM(rfpc_impo_div_nac_gravad)
+            *CAST(AVG(rfdf_porc_distribucion/100) as numeric(12,2))
+            ,SUM(rfpc_impo_isr_nac_adicional)
+            *CAST(AVG(rfdf_porc_distribucion/100) as numeric(12,2))
+            ,SUM(rfpc_impo_div_nac_exento)
+            *CAST(AVG(rfdf_porc_distribucion/100) as numeric(12,2))
+            ,SUM(rfpc_impo_isr_ext_acred)
+            *CAST(AVG(rfdf_porc_distribucion/100) as numeric(12,2))
+            ,SUM(cast(rfpc_impo_div_nac_gravad
+                    *:rffc-factor-piramidacion as numeric(18,2))
+            +    cast(rfpc_impo_div_nac_exento
+                    *:rffc-factor-piramidacion as numeric(18,2)))
+            *CAST(AVG(rfdf_porc_distribucion/100) as numeric(12,2))
+           ,SUM(cast(rfpc_impo_div_nac_gravad*:rffc-factor-piramidacion
+                    -rfpc_impo_div_nac_gravad as numeric(18,2))
+               +cast(rfpc_impo_div_nac_exento*:rffc-factor-piramidacion
+                    -rfpc_impo_div_nac_exento as numeric(18,2)))
+            *CAST(AVG(rfdf_porc_distribucion/100) as numeric(12,2))
+       from =srefisac
+             left join =srefispc on rfac_num_contrato=rfpc_num_contrato
+             left join =sempnego on rfac_cve_negocio=eneg_cve_negocio
+             left join =sctofide on rfac_num_contrato=fide_num_contrato
+             left join =srefisdf on (rfac_anio_mes, rfac_num_contrato)
+                                   =(rfdf_anio_mes, rfdf_num_contrato)
+             left join =srefispe
+                    on (rfdf_anio_mes,rfdf_num_contrato,rfdf_num_persona)
+                      =(rfpe_anio_mes,rfpe_num_contrato,rfpe_num_persona)
+             left join =sareacb  on rfac_numf_area=arcb_numf_area
+             left join =satrxcto on (rfac_num_contrato,"DIST")
+                                   =(atxc_num_contrato,atxc_cve_atributo)
+       WHERE
+             UPPER(TRIM(rfac_cve_tipo_contrato)) in ("BA","TE")
+        and  rfac_num_uso_contrato not in (10,12,13,15,19,20,21,22)
+        and  SUBSTRING(arcb_cve_seguridad from 1 for 6)<>"003002"
+        and  SUBSTRING(arcb_cve_seguridad from 1 for 9)<>"003007004"
+        and  CASE when atxc_numf_atributo_univaluado is null then 0 else
+                       atxc_numf_atributo_univaluado END NOT in (2,3,4)
+        and CASE when fide_num_contrato is NULL then 0 else 1 end
+         = :fide-num-contrato
+        and (:fide-num-contrato = 1 OR
+              UPPER(TRIM(rfpe_cve_tipo_persona))<>"MORA")
+        and TRIM(UPPER(eneg_cve_empresa))= :eneg-cve-empresa
+        and rfac_anio=2015
+        and rfpc_anio_mes>=rfac_anio*100
+      group by 1,2,3,4,5,6,7,8,9
+      order by 1,2
+  FOR BROWSE ACCESS
+  END-EXEC.
+
+ 01 ws-file-status.
+    02 stat-1                          pic  9.
+    02 stat-2                          pic  9.
+ 01 file-status redefines ws-file-status.
+    02 wss-file-status                 pic  x(02).
+       88 RECEIVE-FILE-OK              value "00".
+       88 SHORT-REC-READ               value "04".
+       88 CLOSE-FROM-REQUESTER         value "10".
+       88 INDEX-SEQ-VIOLATION          value "21".
+       88 DUPLICATE-RECORD             value "22".
+       88 NOT-FOUND                    value "23".
+       88 BOUNDARY-VIOLATION           value "24".
+       88 INVALID-KEY                  value "21" thru "24".
+       88 FILE-IS-FULL                 value "34".
+       88 POSITION-UNDEFINED           value "46".
+       88 IO-ERROR                     value "01" thru "99".
+
+ 01 w-define-info.
+    02 w-intname                           pic x(24).
+    02 w-class                             pic x(16).
+    02 w-attribute-name                    pic x(16).
+    02 w-extname                           pic x(36).
+    02 w-extname-len                       native-2.
+    02 w-value-len                         native-2.
+    02 w-error                             native-2.
+       88 ENOERR                           value 0.
+       88 EEOF                             value 1.
+       88 ESYSMSG                          value 6.
+       88 ENOCOMPLETION                    value 40.
+       88 ESQLERR                          value 197.
+       88 INVALIDPARAM                     value 512.
+       88 EBADFILE                         value 4197.
+       88 EUNKNOWN                         value 4208.
+       88 EDEFINEERR                       value 4212.
+       88 EERR                             values are -32767 thru -1,
+                                                           1 thru 32767.
+*** Manejo de Archivo de SALIDA
+ 01 WSS-KEY-ENVIO                      PIC S9(09) COMP.
+
+*** Variables Estandares
+ COPY WSS-VARS-STND-000 OF "$DESA12.SCOGLCPA.C85DEFPG".
+ COPY ESS-VARS-STND-000 OF "$DESA12.SCOGLCPA.C85DEFPG".
+ COPY ESS-VARS-STND-010 OF "$DESA12.SCOGLCPA.C85DEFPG".
+ COPY ESS-VARS-STND-020 OF "$DESA12.SCOGLCPA.C85DEFPG".
+
+ 01 VALIDA-RFC-IN.
+   02 LINKD-NUM-CONTRATO          PIC 9(09).
+   02 LINKD-NUM-PERSONA           PIC 9(09).
+   02 LINKD-CVE-TIPO-PERSONA      PIC X(04).
+   02 LINKD-CODX-RFC              PIC X(13).
+   02 LINKD-CODX-CURP             PIC X(18).
+   02 LINKD-NACIONALIDAD          PIC X(02).
+   02 LINKD-RFC-SAT               PIC X(01).
+   02 LINKD-LIB-RESP              PIC X(01).
+
+*** Generales
+ 01 WSS-PROG-ID                  PIC  X(13) VALUE "<<CFREFFIS>> ".
+ 01 WSS-ERROR-FILE               PIC S9(04) COMP.
+ 01 WSS-FECH-REPORTE             PIC  9(08) VALUE ZEROES.
+
+ 01 P-GETPARAMTEXT.
+    05 P-PARAMETRO               PIC  X(12) VALUE SPACES.
+    05 P-VALOR-ALFANUM           PIC  X(16) VALUE SPACES.
+    05 P-VALOR-NUM               PIC  9(09) VALUE ZEROES.
+    05 P-RESULTADO               PIC  S9999 COMP.
+    05 WSS-OPC-ENVIO             PIC  9(04) VALUE ZEROES.
+    05 WSS-TPO-CONT              PIC  X(01) VALUE SPACES.
+    05 WSS-EMPRESA               PIC  X(04) VALUE SPACES.
+    05 WSS-FEC-EXP               PIC  9(08) VALUE ZEROES.
+    05 WSS-HR-EXP                PIC  9(08) VALUE ZEROES.
+    05 WSS-NUM-RETEN             PIC  X(02) VALUE SPACES.
+    05 WSS-TIP-EXP               PIC  X(01) VALUE SPACES.
+    05 WSS-EJERCICIO1            PIC  9999  VALUE ZEROES.
+    05 WSS-NUMERO-EXP            PIC  9(02) VALUE ZEROES.
+
+ 01 WS88-COD-ERROR-SQL           PIC S9(04) COMP VALUE ZEROS.
+    88  WS88-SQL-EOF             VALUE 1.
+
+ 01 WSS-NOMBRE-ARCHIVO.
+    02 WSS-VOLUMEN               PIC  X(08) VALUE "$DATA20." .
+    02 WSS-SUBVOLUMEN            PIC  X(09) VALUE "BDVCFDAT.".
+    02 WSS-ARCHIVO               PIC  X(08) VALUE SPACES     .
+
+ 01 WSS-ERROR-TAL                PIC S9(04) COMP VALUE 0.
+ 01 WSS-FILE-LEN                 PIC S9(04) COMP VALUE 25.
+ 01 WSS-FILE-CODE                PIC S9(04) COMP VALUE 0.
+ 01 WSS-PRIMARY                  NATIVE-2   VALUE 2048.
+ 01 WSS-SECONDARY                NATIVE-2   VALUE 512.
+ 01 WSS-MAXEXTENTS               PIC S9(04) COMP VALUE 800.
+ 01 WSS-FILETYPE                 PIC S9(04) COMP VALUE 2.
+ 01 WSS-RECORD                   PIC  9(05) COMP VALUE 250.
+ 01 WSS-BLOCK-LEN                PIC S9(04) COMP VALUE 4096.
+ 01 WSS-FILE-NUM                 PIC S9(04) COMP VALUE 0.
+ 01 WSS-ACCESS                   PIC S9(04) COMP VALUE 2.
+ 01 WSS-EXCLUSION                PIC S9(04) COMP VALUE 0.
+ 01 WSS-SALIDA-ERROR-CODE        PIC S9(04) COMP VALUE ZEROES.
+
+ 01 t                            NATIVE-2 VALUE ZERO.
+ 01 fcin                         pic S9(16)V9(2) value zero comp.
+ 01 fcout                        pic x(19)       value spaces.
+ 01 Fsign                        pic x           value "-".
+ 01 Fpnt                         native-2        value 0.
+ 01 EDIT-DROP-LEAD-SPACES        pic ---------------9.99.
+ 01 EDIT-DROP-LEAD-ZEROES        pic -$$$,$$$,$$$,$$9.99.
+
+*--------------------------------------------------------------------------------------------
+*-AG1-AG7-LEX-CO
+*-------------------------------------------------------------------------------------------
+
+ 01 tbl-mes.
+    03 filler pic x(12) value "01ENERO".
+    03 filler pic x(12) value "02FEBRERO".
+    03 filler pic x(12) value "03MARZO".
+    03 filler pic x(12) value "04ABRIL".
+    03 filler pic x(12) value "05MAYO".
+    03 filler pic x(12) value "06JUNIO".
+    03 filler pic x(12) value "07JULIO".
+    03 filler pic x(12) value "08AGOSTO".
+    03 filler pic x(12) value "09SEPTIEMBRE".
+    03 filler pic x(12) value "10OCTUBRE".
+    03 filler pic x(12) value "11NOVIEMBRE".
+    03 filler pic x(12) value "12DICIEMBRE".
+ 01 tbl-mes-list redefines tbl-mes.
+    03 mes-list occurs 12 times.
+       05 mes-numero pic 9(02).
+       05 mes-desc   pic x(10).
+
+ 01 WSS-AG1-REG.
+    02 WSS-AG1-NOMBRE               PIC X(80).
+    02 WSS-AG1-CLAVE-PRODUCTO       PIC X(07).
+    02 WSS-AG1-CONTRATO             PIC X(18).
+    02 WSS-AG1-RFC                  PIC X(13).
+    02 WSS-AG1-CURP                 PIC X(18).
+    02 WSS-AG1-EMPRESA              PIC X(04).
+    02 WSS-AG1-NACIONALIDAD         PIC X(10).
+
+ 01 WSS-AG2-REG.
+    02 WSS-AG2-TITULO-PRODUCTO      PIC X(45).
+    02 WSS-AG2-PERIODO-INICIAL      PIC X(10).
+    02 WSS-AG2-PERIODO-FINAL        PIC X(10).
+    02 WSS-AG2-EJERCICIO            PIC X(04).
+    02 WSS-AG2-PROPORCION           PIC X(06).
+    02 WSS-AG2-MONEDA               PIC X(20) VALUE "MXN".
+    02 WSS-AG2-FECHA-EXPEDICION     PIC X(10).
+    02 WSS-AG2-TIPO-EXPEDICION      PIC X(01) VALUE "T".
+    02 WSS-AG2-HORA-EXPEDICION      PIC X(08).
+    02 WSS-AG2-HORADIF              PIC X(06) VALUE"-05:00".
+    02 WSS-AG2-SERIECSD             PIC X(25) VALUE SPACES.
+    02 WSS-AG2-TIPO-DIVIDENDO       PIC X(2).
+    02 WSS-AG2-FILLER               PIC X(05) VALUE SPACES.
+
+ 01 WSS-AG3-REG.
+    02 WSS-AG3-CALLE-NUMERO         PIC X(40).
+    02 WSS-AG3-COLONIA              PIC X(40).
+    02 WSS-AG3-CIUDAD               PIC X(20).
+    02 WSS-AG3-CODIGO-POSTAL        PIC X(05).
+    02 WSS-AG3-CODIGO-CR            PIC X(05).
+    02 WSS-AG3-FECHA-CORTE          PIC X(10).
+    02 WSS-AG3-FILLER               PIC X(30) VALUE SPACES.
+
+ 01 WSS-AG4-REG.
+    02 WSS-AG4-FECHA-EXPEDICION     PIC X(10).
+    02 WSS-AG4-TIPO-EXPEDICION      PIC X(01) VALUE "T".
+    02 WSS-AG4-HORA-EXPEDICION      PIC X(08).
+    02 WSS-AG4-HORADIF              PIC X(06) VALUE"-05:00".
+
+ 01 WSS-AG5-REG.
+    02 WSS-AG5-RFC-EMISOR           PIC X(13).
+    02 WSS-AG5-CURP-EMISOR          PIC X(18).
+    02 WSS-AG5-NOMBRE-EMISOR        PIC X(80).
+    02 WSS-AG5-LUGAR-EXPEDICION     PIC X(15).
+    02 WSS-AG5-FECHA-EXPEDICION     PIC X(10).
+    02 WSS-AG5-FILLER               PIC X(14) VALUE SPACES.
+
+ 01 WSS-AG6-REG.
+    02 WSS-AG6-DIR-EMISOR           PIC X(150).
+
+ 01 WSS-AG7-REG.
+    02 WSS-AG7-VER-CFDI          PIC X(3).
+    02 WSS-AG7-VER-COMP          PIC X(3).
+    02 WSS-AG7-TIPO-PAGO-RET     PIC X(16).
+    02 WSS-AG7-CVE-RET           PIC X(2).
+
+ 01 WSS-LEX-REG.
+    02 WSS-LEX-LUGAR-EXP         PIC  X(79).
+
+ 01 WSS-CO8-REG.
+    02 WSS-DIG-VERIF             PIC  X(08)  VALUE "00000000".
+    02 WSS-C08-ARRAY             PIC  X(01)  VALUE "-".
+    02 WSS-NODE-EXP              PIC  X(02)  VALUE "00".
+    02 WSS-FILLER                PIC  X(139) VALUE SPACES.
+
+ 01 WSS-LY-REG.
+    02 WSS-LY1                   PIC X(150).
+    02 WSS-LY2                   PIC X(150).
+    02 WSS-LY3                   PIC X(150).
+    02 WSS-LY4                   PIC X(150).
+    02 WSS-LY5                   PIC X(150).
+    02 WSS-LY61                  PIC X(150).
+    02 WSS-LY62                  PIC X(150).
+    02 WSS-LY71                  PIC X(150).
+    02 WSS-LY72                  PIC X(150).
+    02 WSS-LY8                   PIC X(150).
+
+    02 WSS-LY91-CB-00            PIC X(150).
+    02 WSS-LY92-1-CB-00          PIC X(116).
+    02 WSS-LY92-3-CB-00          PIC X(25).
+    02 WSS-LY93-CB-00            PIC X(150).
+
+    02 WSS-LY91-CB-01            PIC X(150).
+    02 WSS-LY92-CB-01            PIC X(150).    
+    02 WSS-LY93-CB-01            PIC X(36).
+
+    02 WSS-LY91-BN-00            PIC X(150).
+    02 WSS-LY92-1-BN-00          PIC X(61).
+    02 WSS-LY92-3-BN-00          PIC X(36).
+
+    02 WSS-LY91-BN-01            PIC X(150).
+    02 WSS-LY92-1-BN-01          PIC X(97).
+    02 WSS-LY92-3-BN-01          PIC X(36).
+
+    02 WSS-LY91                  PIC X(150).
+    02 WSS-LY92                  PIC X(150).
+    02 WSS-LY93                  PIC X(150).
+	
+	
+01 WSS-LY-CF-REG.
+    02 WSS-LY1-CF                 PIC X(239).
+    02 WSS-LY2-CF                 PIC X(239).
+    02 WSS-LY3-CF                 PIC X(239).
+    02 WSS-LY4-CF                 PIC X(239).
+    02 WSS-LY5-CF                 PIC X(239).
+    02 WSS-LY61-CF                PIC X(239).    
+    02 WSS-LY71-CF                PIC X(239).    
+    02 WSS-LY8-CF                 PIC X(239).
+	02 WSS-LY91-CF                PIC X(239).
+	02 WSS-LY92-CF                PIC X(239).
+	
+
+ 01 WSS-RNG-REG.
+    02 RNG-Emisora                PIC X(24).
+    02 RNG-DivNal                 PIC x(19).
+    02 FILLER18                   PIC X(38) VALUE SPACES.
+    02 RNG-IsrAdicional           PIC x(19).
+
+ 01 WSS-TNG-REG.
+    02 xAc-TNG-TotDivNal          PIC S9(16)V9(02).
+    02 xAc-TNG-TotIsrAdicional    PIC S9(16)V9(02).
+
+01 WSS-TNG-P-REG.
+    02 pAc-TNG-TotDivNal          PIC x(19).
+    02 FILLER18                   PIC X(38) VALUE SPACES.
+    02 pAc-TNG-TotIsrAdicional    PIC x(19).
+
+ 01 WSS-RNE-2-REG.
+    02 RNE-2-Emisora              PIC X(24).
+    02 RNE-2-DivNal               PIC X(19).
+	02 FILLER18                   PIC X(38) VALUE SPACES.
+    02 RNE-2-IsrAdicional         PIC X(19).
+	
+
+ 01 WSS-TNE-2-REG.
+    02 xAc-TNE-2-TotDivNal        PIC S9(16)V9(02).
+ 01 WSS-TNE-2-P-REG.
+    02 pAc-TNE-2-TotDivNal        PIC X(19).
+    
+	
+
+ 01 WSS-RNE-3-REG.
+    02 RNE-3-Emisora          PIC X(24).
+    02 RNE-3-DivNal           PIC X(19).
+    02 RNE-3-DivPiramidado    PIC X(19).
+    02 RNE-3-isrCorporativo   PIC X(19).
+    02 RNE-3-IsrAcreditable   PIC X(19).
+    02 RNE-3-IsrAdicional     PIC X(19) VALUE SPACES.
+
+ 01 WSS-TNE-3-REG.
+    02 xAc-TNE-3-TotDivNal          PIC S9(16)V9(02).
+    02 xAc-TNE-3-TotDivPiramidado   PIC S9(16)V9(02).
+    02 xAc-TNE-3-TotIsrAcreditable  PIC S9(16)V9(02).
+    
+01 WSS-TNE-3-P-REG.
+    02 pAc-TNE-3-TotDivNal          PIC X(19).
+    02 pAc-TNE-3-TotDivPiramidado   PIC X(19).
+    02 pAc-TNE-3-TotIsrAcreditable  PIC X(19).
+ 
+	
+	
+ 01 WSS-REX-4-REG.
+    02 REX-4-Emisora          PIC X(24).
+    02 REX-4-DivBruto         PIC S9(16)V9(02).
+    02 REX-4-IsrRetExt        PIC x(19) VALUE SPACES.
+    02 REX-4-Dividendo        PIC x(19) VALUE SPACES.
+    02 REX-4-IsrAdicional     PIC S9(16)V9(02).
+
+ 01 WSS-TEX-4-REG.
+    02 TEX-4-Emisora             PIC X(24).
+    02 xAc-TEX-4-TotDivBruto         PIC S9(16)V9(02).
+    02 xAc-TEX-4-TotIsrRetExt        PIC x(19) VALUE SPACES.
+    02 xAc-TEX-4-TotDividendo        PIC x(19) VALUE SPACES.
+    02 xAc-TEX-4-TotIsrAdicional     PIC S9(16)V9(02).
+
+ 01 WSS-REX-5-REG.
+    02 REX-5-Emisora             PIC X(24).
+    02 REX-5-DivBruto         PIC S9(16)V9(02).
+    02 REX-5-IsrRetExt        PIC S9(16)V9(02).
+    02 REX-5-Dividendo        PIC $9(16)V9(02).
+    02 REX-5-IsrAdicional     PIC $9(16)V9(02).
+
+ 01 WSS-TEX-5-REG.
+    02 TEX-5-Emisora          PIC X(24).
+    02 xAc-TEX-5-TotDivBruto         PIC S9(16)V9(02).
+    02 xAc-TEX-5-TotIsrRetExt        PIC X(19) VALUE SPACES.
+    02 xAc-TEX-5-TotDividendo        PIC X(19) VALUE SPACES.
+    02 xAc-TEX-5-TotIsrAdicional     PIC S9(16)V9(02).
+
+ 01 WSS-RE1-1-REG.
+	02 FILLER1                  PIC X(19) VALUE SPACES. 
+	02 FILLER2                  PIC X(19) VALUE SPACES. 
+    02 RE1-1-DIV-NAC-GRAVADO    PIC X(19).
+    02 RE1-1-ISR-NACIONAL       PIC X(19).
+    02 FILLER5                  PIC X(19) VALUE SPACES. 
+
+ 01 WSS-RE1-2-REG.
+    02 FILLER1                  PIC X(19) VALUE SPACES.
+    02 FILLER2                  PIC X(19) VALUE SPACES.
+    02 FILLER3                  PIC X(19) VALUE SPACES.
+    02 FILLER4                  PIC X(19) VALUE SPACES.
+    02 RE1-2-DIV-NAC-EXENTO     PIC X(19).
+	
+
+ 01 WSS-RE1-4-REG.
+    02 RE1-4-DIV-EXTRANJERA     PIC S9(16)V9(02).
+    02 RE1-4-ISR-EXTRANJERA     PIC S9(16)V9(02).
+    02 RE1-4-DIV-NAC-GRAVADO    PIC X(19) VALUE SPACES.
+    02 RE1-4-ISR-NACIONAL       PIC X(19) VALUE SPACES.
+    02 RE1-4-DIV-NAC-EXENTO     PIC X(19) VALUE SPACES.
+
+	
+ 01 WSS-RE2-3-REG.
+    02 FILLER1                  PIC X(19) VALUE SPACES.
+    02 FILLER2                  PIC X(19) VALUE SPACES. 
+    02 RE2-3-DIV-ACUMULABLE     PIC X(19).
+    02 RE2-3-RET-EXT            PIC X(19).
+	
+
+ 01 WSS-RE2-5-REG.
+    02 RE2-5-DIV-ACUMULABLE     PIC X(19) VALUE SPACES.
+    02 RE2-5-RET-EXT            PIC X(19) VALUE SPACES.
+    02 RE2-5-DIV-PIRAMIDADO     PIC S9(16)V9(02).
+    02 RE2-5-ISR-ACREDITABLE    PIC S9(16)V9(02).
+
+ 01 WSS-CF.
+    02 IND-CF NATIVE-2 VALUE ZERO.
+    02 WSS-CF-TABLE OCCURS 1 TO 10 TIMES
+       DEPENDING ON IND-CF.
+       03 WSS-T-CF            PIC X(150).
+
+ 01 WSS-TAB-DETALLE.
+    02 IND-DET NATIVE-2 VALUE ZERO.
+    02 WSS-DET-TABLE  OCCURS 1 TO 10 TIMES
+       DEPENDING ON IND-DET.
+        03 WSS-T-DETALLE          PIC X(150).
+
+ 01 WSS-CF1-TMP   PIC X(500).
+ 01 WSS-CF1-TMP-1 PIC X(250).
+ 01 WSS-CF1-TMP-2 PIC X(250).
+ 
+     
+ 
+ 01 WSS-CF1-REG.
+    02 WSS-CF1-VERSION-CF1                    PIC  X(03) VALUE "1.0".
+    02 WSS-CF1-FOLIO-INTERNO                  PIC  X(18).            
+    02 WSS-CF1-FECHA-EXPEDICION               PIC  X(25).            
+    02 WSS-CF1-CLAVE-RETENCION                PIC  X(02).            
+    02 WSS-CF1-DESC-RETENCION                 PIC  X(100).           
+    02 WSS-CF1-RFC-EMISOR                     PIC  X(13).            
+    02 WSS-CF1-NOMBRE-EMISOR                  PIC  X(300).           
+    02 WSS-CF1-NACIONALIDAD                   PIC  X(10).            
+    02 WSS-CF1-RFC-RECEPTOR                   PIC  X(13).            
+    02 WSS-CF1-NOMBRE-RECEPTOR                PIC  X(300).           
+    02 WSS-CF1-CURP-RECEPTOR                  PIC  X(23).            
+    02 WSS-CF1-TAX-ID                         PIC  X(20).            
+    02 WSS-CF1-NOMBRE-EXTRANJERO              PIC  X(300).           
+    02 WSS-CF1-MES-INICIAL                    PIC  9(02).            
+    02 WSS-CF1-MES-FINAL                      PIC  9(02).            
+    02 WSS-CF1-EJERCICIO                      PIC  9(04).            
+    02 WSS-CF1-MONTO-TOT-OPERACION            PIC  X(16).            
+    02 WSS-CF1-MONTO-TOT-GRAVADO              PIC  X(16).            
+    02 WSS-CF1-MONTO-TOT-EXENTO               PIC  X(16).            
+    02 WSS-CF1-MONTO-TOT-RETENIDO             PIC  X(16).            
+    02 WSS-CF1-BASE-RETENCION                 PIC  X(16).            
+    02 WSS-CF1-TIPO-IMPUESTO                  PIC  9(02).            
+    02 WSS-CF1-MONTO-RET-ISRRET               PIC  X(16).            
+    02 WSS-CF1-TIPO-PAGO-RETENCION            PIC  X(16).            
+
+	
+ 01 WSS-CF2-REG.
+    02 CF2-VersionComplemento                 PIC X(3) VALUE "1.0".	
+    02 CF2-TipoDividendo                      PIC X(2).
+	02 CF2-Procedencia                        PIC X(19).
+    02 CF2-MontoRetCobMexico                  PIC X(19).
+    02 CF2-MontoRetCobExt                     PIC X(19).
+    02 CF2-MontoRetExtCobExt                  PIC X(19).
+    02 CF2-TipoSociedad                       PIC X(19).
+    02 CF2-ISRAcrNacional                     PIC X(19).
+    02 CF2-DiviAcuNacional                    PIC X(19).
+    02 CF2-DiviAcuExt                         PIC X(19).
+	02 CF2-ProporcionRem                      PIC X(1) VALUE "|".
+    
+    
+
+*--------------------------------------------------------------------------------------------
+*-CONTROL
+*--------------------------------------------------------------------------------------------
+ 01 xAG5RFCemisor       PIC  X(12).
+ 01 xAG5NombreEmisor    PIC  X(80).
+ 01 xAG6DirEMISOR       PIC  X(150).
+ 01 xAG5LugarExpedicion PIC  X(15).
+ 01 xTipoRetencion      PIC  X(16).
+ 01 xSelectProceso      PIC  X(1).
+ 01 xLEXLugarExp        PIC  X(79).
+ 01 xTipoReExpedicion   PIC  X(02).
+ 01 xFlagDemo           PIC  9(1) VALUE ZEROS.
+ 01 xMes                PIC  9(2).
+ 01 xDia                PIC  9(2).
+ 01 xHora               PIC  9(2).
+ 01 xMin                PIC  9(2).
+ 01 xTipoDividendo      PIC  9(1) VALUE ZEROS.
+ 01 pPorcDistribucion   pic  X(6).
+ 01 PorcDistribucion    pic  9(3)V9(02).
+
+ 01 WSS-FOLIO           PIC  9(7) VALUE 0.
+ 01 WSS-CR              PIC  9(3) VALUE 0.
+ 01 C-CFBP              PIC  9(4) VALUE 0.
+ 01 C-CFB               PIC  9(4) VALUE 0.
+ 01 C-CFA               PIC  9(4) VALUE 0.
+ 01 C-CFC               PIC  9(4) VALUE 0.
+ 01 IND-T               PIC  9(4) VALUE 0.
+
+ 01 WSS-CTRL-REG.
+    02 WSS-CTRL-PRODUCTO                 PIC  X(5) VALUE SPACES.
+    02 WSS-CTRL-FILLER2                  PIC  X(2) VALUE SPACES.
+    02 WSS-CTRL-TRAMA                    PIC  X(3) VALUE SPACES.
+    02 WSS-CTRL-FILLER2                  PIC  X(2) VALUE "00".
+    02 WSS-CTRL-CONTRATO                 PIC  X(9) VALUE "000000000" .
+    02 WSS-CTRL-COD-REP                  PIC  X(5) VALUE "00000".
+    02 WSS-CTRL-FOLIO                    PIC  X(7) VALUE "0000000".
+    02 WSS-CTRL-FOLIO-PAG                PIC  X(7) VALUE "0000001".
+    02 WSS-CTRL-PLAZA                    PIC  X(3) VALUE "001".
+    02 WSS-CTRL-CONSECUTIVO-REG          PIC  X(3) VALUE "000".
+    02 WSS-CTRL-MENSAJERIA               PIC  X(4) VALUE "0000".
+    02 WSS-CTRL-M1-HOJA-VALIDA           PIC  X(1) VALUE "S".
+    02 WSS-CTRL-M2-FIN-GRUPO             PIC  X(1) VALUE "S".
+    02 WSS-CTRL-M3-CAMBIO-CR             PIC  X(1) VALUE "N".
+    02 WSS-CTRL-M4-NUM-HOJAS-1           PIC  X(1) VALUE "N".
+    02 WSS-CTRL-M5-NUM-HOJAS-2           PIC  X(1) VALUE "N".
+    02 WSS-CTRL-M6-NUM-HOJAS-4           PIC  X(1) VALUE "N".
+    02 WSS-CTRL-M7-NUM-HOJAS-8           PIC  X(1) VALUE "N".
+    02 WSS-CTRL-M8-SELECTIVA1            PIC  X(1) VALUE "N".
+    02 WSS-CTRL-M9-SELECTIVA2            PIC  X(1) VALUE "N".
+    02 WSS-CTRL-M10-SELECTIVA3           PIC  X(1) VALUE "N".
+    02 WSS-CTRL-M11-GENERAL              PIC  X(1) VALUE "N".
+    02 WSS-CTRL-IND-ENVIAR-RETENER       PIC  X(1) VALUE " ".
+    02 WSS-CTRL-FILLER38                 PIC  X(38) VALUE SPACES.
+
+ 01 WSS-CTRL-CF-REG.
+    02 WSS-CTRL-CF-PRODUCTO              PIC  X(5) VALUE SPACES.
+    02 WSS-CTRL-CF-FILLER2               PIC  X(2) VALUE SPACES.
+    02 WSS-CTRL-CF-TRAMA                 PIC  X(3) VALUE SPACES.
+    02 WSS-CTRL-CF-FILLER1               PIC  X(1) VALUE SPACES.
+
+ PROCEDURE DIVISION.
+ DECLARATIVES.
+
+ DECL-FILE-SALIDA SECTION.
+    USE AFTER ERROR PROCEDURE ON FILE-SALIDA.
+    DISPLAY WSS-PROG-ID "Error en Archivo de SALIDA !!! Importante !!!, Error Cobol : "
+    WS-FILE-STATUS, " Error Guardian : " GUARDIAN-ERR UPON HOME-TERM.
+    ENTER TAL ABEND.
+ END DECLARATIVES.
+
+ Main.
+    PERFORM Inicio
+    if ENOERR perform Proceso.
+    PERFORM Fin
+ STOP RUN.
+
+ Inicio.
+     INITIALIZE entidad-reg sareacb-reg satrxcto-reg scodpost-reg sctofide-reg
+                sedopais-reg semisora-reg sempnego-reg sjournal-reg sr2fistt-reg
+                srefisac-reg srefiscm-reg srefisdf-reg srefisdo-reg srefisdt-reg
+                srefismc-reg srefispc-reg srefispe-reg srefisre-reg srefistt-reg
+                srfcatal-reg srfdiscl-rec srffolmc-reg srefisfc-reg spais-reg
+                H-Liquidaciones w-define-info valida-rfc-in hNumPersonaAnt
+                hNumContratoAnt wss-file-num h-negocio h-fecha-hoy h-hora-hoy
+                h-wss-folio H-Resumen
+     perform CleanTbl
+     perform 8000-call-tgetmyid
+     move " <<CFREFFIS >> Inicia Ejecucion ( Genera tramas )"
+       to ess-msg-oper-l3-txt-error
+     move "               D I V I D E N D O S "
+       to ess-msg-oper-l4-txt-error
+     perform 8000000-mensajes-operador
+     perform 8005-maneja-parametros.
+     move eneg-cve-empresa to wss-archivo
+     move jour-campo-ad2   to wss-numero-exp
+     move wss-numero-exp   to wss-archivo (5:)
+     if fide-num-contrato = 0
+        move "NO" to wss-archivo (7:)
+     else
+        move "FI" to wss-archivo (7:).
+
+ CleanTbl.
+     INITIALIZE IND-DET IND-CF
+     move 10 to IND-DET IND-CF
+     perform varying t from 1 by 1 until t > IND-DET
+         INITIALIZE wss-t-detalle ( t )
+                    wss-t-cf ( t )
+     end-perform
+     INITIALIZE IND-DET IND-CF.
+
+ Proceso.
+      perform 1002-INI-AC
+      move 1.42857142 to rffc-factor-piramidacion
+      exec sql open CUR_DIVS end-exec
+      if SQLCODE = 0
+         PERFORM with test after until SQLCODE = 100 or EERR
+            exec sql fetch CUR_DIVS
+               INTO :hNumContrato, :hNumPersona, :hCveTpoPersona, :hCveRolCto,
+                    :hCveRFC, :hNombrePersona, :hNacionalidad, :hNumInstrumento,
+                    :hDescInstrumento, :hMesIniVigencia, :hMesFinVigencia,
+                    :hTpoProceso, :hPorcDistribucion, :hDividendoBrutoSujetoRet,
+                    :hISRretenidoExtranjero, :hTotalDividendo, :hRetencion10ISRadivExt
+            end-exec
+
+*            display SQLCODE "|" hNumContrato "|" hNumPersona  "|" hDescInstrumento
+*              upon HOME-TERM
+
+
+            if SQLCODE = 0 or 8417 or 8403
+               if hNumPersona NOT = hNumPersonaAnt
+
+
+                  if hNumPersonaAnt NOT = ZERO
+* poner aqui todo lo que va al final
+*                    x ej aqui iria el vaciado y escriture de tablas de prods
+                      perform 10000-AC-RE1
+                      perform 10100-AC-RE2
+					  
+					  perform 30000-DUMP-DETALLE
+					  
+					  perform 40200-AC-TNG
+					  perform 50200-AC-TNE
+					
+					  perform 50000-AC-CF1
+					  perform 50100-AC-CF2
+					  perform 50200-AC-CF3
+					  
+					  perform 60000-AC-LY-CF
+					  
+					  perform 30100-DUMP-CF
+					  perform 40300-AC-CT1  
+					  perform 50300-AC-CT2
+					  
+                     perform registra-sjournal
+                  end-if
+
+** poner aqui todo lo que se escribe al inicio de un cto-per / inic variables ej:wss-cr
+                  perform mueve-datos-libreria
+                  call CFREFRFC using valida-rfc-in
+                  move linkd-codx-rfc to hCveRFC
+                  perform 9010-select-srefisdo
+*------------------------------------------
+                  perform 1002-INI-AC
+*-------------------------------------------
+                  perform 1000-AG-LY-LEX-CO
+               end-if
+                
+			   perform 40000-AC-RNG
+			   perform 50000-AC-RNE	 
+
+               move hNumPersona  to hNumPersonaAnt
+               move hNumContrato to hNumContratoAnt
+            else
+               if SQLCODE not = 100
+                  set ESQLERR to TRUE
+                  DISPLAY "*** ERROR " SQLCODE " DESPUES FETCH"
+                  upon HOME-TERM
+               end-if
+            end-if
+         END-PERFORM
+         EXEC SQL CLOSE CUR_DIVS END-EXEC
+      else
+         set ESQLERR to TRUE
+         DISPLAY "*** ERROR " SQLCODE " AL ABRIR CURSOR"
+         upon HOME-TERM
+      end-if.
+
+ mueve-datos-libreria.
+     MOVE hNumContrato   TO linkd-num-contrato
+     MOVE hNumPersona    TO linkd-num-persona
+     MOVE hCveTpoPersona TO linkd-cve-tipo-persona
+     MOVE hCveRFC        TO linkd-codx-rfc
+     MOVE hNacionalidad  TO linkd-nacionalidad
+     MOVE "N"            TO linkd-rfc-sat
+     MOVE "N"            TO linkd-lib-resp.
+
+ Fin.
+     move " <<CFREFFIS >> Termina Ejecucion ( Dividendos )"
+       to ess-msg-oper-l3-txt-error
+     perform 8000000-mensajes-operador.
+
+ 8005-maneja-parametros.
+      set ENOERR to TRUE
+      initialize jour-campo-ad2 eneg-cve-empresa fide-num-contrato
+      move "EMPRESA" to p-parametro
+      perform 8010-parametro-alfanum
+      move p-valor-alfanum to eneg-cve-empresa
+      if eneg-cve-empresa not = "CBOL" and "BANC"
+         set INVALIDPARAM to TRUE
+         move "Los valores para el parametro 'empresa' deben ser 'CBOL'"
+            to ess-msg-oper-l3-txt-error
+         move "o 'BANC'"
+            to ess-msg-oper-l3-txt-error (57:)
+         perform 8000000-mensajes-operador.
+      if ENOERR
+         move "TPODIV" to p-parametro
+         perform 8010-parametro-alfanum
+         move 99 to jour-campo-ad2
+         EVALUATE p-valor-alfanum
+             when "NOQFIN"     move 1 to jour-campo-ad2
+             when "QFIN"       move 2 to jour-campo-ad2
+             when "PIRAMIDADO" move 3 to jour-campo-ad2
+             when "ISRNAC"     move 4 to jour-campo-ad2
+             when "ISREXT"     move 5 to jour-campo-ad2
+*--          when "RESUMEN"    move 6 to jour-campo-ad2
+             when  other move 99 to jour-campo-ad2.
+         if jour-campo-ad2 = 99
+            set INVALIDPARAM to TRUE
+            move "Los valores para el parametro 'tpodiv' deben ser 'NOQFIN'"
+               to ess-msg-oper-l3-txt-error
+            move ",'QFIN',"
+              to ess-msg-oper-l3-txt-error (57:)
+            move "'PIRAMIDADO','ISRNAC','ISREXT' o 'RESUMEN'"
+               to ess-msg-oper-l4-txt-error
+            perform 8000000-mensajes-operador.
+      if ENOERR
+         move "FIDE" to p-parametro
+         perform 8010-parametro-alfanum
+         move 99 to fide-num-contrato
+         EVALUATE p-valor-alfanum
+             when "N" move 0 to fide-num-contrato
+             when "S" move 1 to fide-num-contrato
+             when  other move 99 to fide-num-contrato.
+         if fide-num-contrato = 99
+            set INVALIDPARAM to TRUE
+            move "Los valores para el parametro 'fide' deben ser 'N' o 'S'"
+               to ess-msg-oper-l3-txt-error
+            perform 8000000-mensajes-operador.
+      if ENOERR
+         move "ENTSOL" to p-parametro
+         move "E" to hSolicitaCFDI
+         perform 8010-parametro-alfanum
+         if p-resultado > 0
+            move p-valor-alfanum to hSolicitaCFDI
+            if p-valor-alfanum NOT = "C" AND NOT = "E"
+               set INVALIDPARAM to TRUE
+               move "Los valores para el parametro 'xxxxx' deben ser 'C' o 'E'"
+                 to ess-msg-oper-l3-txt-error
+               perform 8000000-mensajes-operador.
+
+      if ENOERR
+         move "FECHE" to p-parametro
+         ACCEPT h-fecha-hoy from DATE YYYYMMDD
+         ACCEPT h-hora-hoy  from TIME
+         COMPUTE h-fecha-hoy = h-fecha-hoy
+               - FUNCTION INTEGER-PART (h-fecha-hoy / 10000 )
+               * 10000
+         COMPUTE h-hora-hoy
+               = FUNCTION INTEGER-PART (h-hora-hoy / 10000 )
+         COMPUTE h-fecha-hoy
+               = h-fecha-hoy * 10000
+               + h-hora-hoy
+         MOVE h-fecha-hoy to hFechExpedicion
+         perform 8013-parametro-num
+         if p-resultado > 0
+            move p-valor-num to hFechExpedicion
+            if hFechExpedicion < 01010101 OR
+               hFechExpedicion > 12312359 OR
+               hFechExpMM < 01 OR
+               hFechExpMM > 12 OR
+               hFechExpDD < 01 OR
+               hFechExpDD > 23 OR
+               hFechExpMI > 59
+               set INVALIDPARAM to TRUE
+               move "Fecha de (Re)expedicion incorrecta; formato mmddhhmi (8 digitos)"
+                 to ess-msg-oper-l3-txt-error
+               perform 8000000-mensajes-operador.
+
+ 8000-CALL-TGETMYID.
+      ENTER TAL "TGETMYID" USING WSS-PARA-TGMID-PROGFILE
+      WSS-PARA-TGMID-PROCNAME WSS-PARA-TGMID-USERGROUP.
+
+ 8010-PARAMETRO-ALFANUM.
+      INITIALIZE P-VALOR-ALFANUM P-VALOR-NUM P-RESULTADO
+      MOVE FUNCTION UPPER-CASE(P-PARAMETRO) TO P-PARAMETRO
+      ENTER GETPARAMTEXT
+          USING P-PARAMETRO P-VALOR-ALFANUM
+         GIVING P-RESULTADO
+      MOVE FUNCTION UPPER-CASE (P-VALOR-ALFANUM)
+        TO P-VALOR-ALFANUM.
+
+ 8013-PARAMETRO-NUM.
+      INITIALIZE P-VALOR-ALFANUM P-VALOR-NUM P-RESULTADO
+      ENTER GETPARAMTEXT
+          USING P-PARAMETRO P-VALOR-NUM
+         GIVING P-RESULTADO.
+
+ 9010-select-srefisdo.
+    initialize hInfoDomicilio
+    exec sql
+         select rfdo_num_estado
+               ,TRIM(UPPER(rfdo_codx_postal))
+               ,TRIM(UPPER(rfdo_cve_pais))
+               ,TRIM(UPPER(rfdo_txt_delegacion_municipio))
+               ,TRIM(UPPER(rfdo_txt_calle_num))
+               ,TRIM(UPPER(rfdo_txt_colonia))
+               ,CASE WHEN copo_centro_reparto is NULL
+                     THEN 0 ELSE copo_centro_reparto END
+               ,TRIM(UPPER(CASE WHEN edop_desc_estado is NULL
+                     THEN "" ELSE edop_desc_estado END))
+          INTO :hNumEstado
+              ,:hCodxPostal
+              ,:hCvePais
+              ,:hTxtDelegacionMunicipio
+              ,:hTxtCalleNum
+              ,:hTxtColonia
+              ,:hNumCentroReparto
+              ,:hDescEstado
+          from =srefisdo
+     left join =scodpost on rfdo_codx_postal=copo_codigo_postal
+     left join =sedopais on rfdo_num_estado=edop_num_estado
+          where rfdo_anio_mes=2015*100+:hMesFinVigencia
+            and rfdo_num_contrato=:hNumContrato
+            and rfdo_num_persona=:hNumPersona
+            and rfdo_codx_tipo_domicilio="POST"
+         browse access
+    end-exec
+    if SQLCODE = 100
+       initialize hInfoDomicilio
+    else
+       if SQLCODE Not = 0 and NOT = 8423
+          set ESQLERR to TRUE
+          display "*** Err " SQLCODE " On SELECT-SREFISDO" upon HOME-TERM
+          enter tal "SQLCADISPLAY" using SQLCA
+          enter tal "ABEND".
+    initialize SQLCODE.
+
+  0010-Escribe-reg.
+      if wss-file-num = 0
+         perform 0010-borra-archivo
+         perform 0310-abre-archivo
+      end-if
+      move function LENGTH(regsalida) to wss-record
+      enter "writex"
+      using wss-file-num regsalida wss-record omitted omitted
+      enter "file_getinfo_"
+              using wss-file-num wss-salida-error-code
+      if wss-salida-error-code = ZERO
+         INITIALIZE regsalida
+      else
+         set EBADFILE to TRUE
+         display "*** Err " wss-salida-error-code " On WRITEX "
+                  wss-nombre-archivo upon HOME-TERM
+         enter tal "ABEND"
+      end-if.
+
+ 0010-borra-archivo.
+      enter tal "FILE_PURGE_"
+          using wss-nombre-archivo
+         giving wss-error-tal
+      if wss-error-tal NOT = ZERO and not = 11
+         display wss-prog-id "error code " wss-error-tal
+                             " on 'file_purge'"
+                             upon HOME-TERM STOP RUN
+      else
+         enter tal "PROCESSFILESECURITY" using 2340
+         enter tal "FILE_CREATE_"
+             using wss-nombre-archivo wss-file-len 0 wss-primary
+                   wss-secondary wss-maxextents wss-filetype 0 wss-record
+            giving wss-error-tal
+         if wss-error-tal = 0
+            display "Se genera el archivo = " WSS-NOMBRE-ARCHIVO
+               upon HOME-TERM
+         else
+            display wss-prog-id "*** Err " wss-error-tal
+                                " on 'FILE_CREATE_'"
+                                upon HOME-TERM STOP RUN
+         end-if
+      end-if.
+
+ 0310-abre-archivo.
+      enter "FILE_OPEN_"
+         using wss-nombre-archivo wss-file-num wss-access
+               wss-exclusion
+        giving wss-salida-error-code
+      if wss-salida-error-code not = 0
+         display wss-prog-id "*** Err " wss-error-tal
+                             " on 'FILE_OPEN_' "
+                             wss-nombre-archivo
+                             upon HOME-TERM STOP RUN
+      end-if.
+
+ registra-sjournal.
+     ENTER TAL BEGINTRANSACTION
+     perform GetFolioSjournal
+     ACCEPT h-fecha-hoy from DATE YYYYMMDD
+     ACCEPT h-hora-hoy  from TIME
+     move hNumContratoAnt    to jour-num-contrato
+     move hNumPersonaAnt     to jour-num-persona
+     move "SIN9412025I4"     to jour-rfc-entidad
+     if eneg-cve-empresa = "CBOL"
+         move "SIC920427R31" to jour-rfc-entidad
+     end-if
+     move "PENDIENTE"        to jour-status
+     move h-fecha-hoy        to jour-fecha-registro
+     move h-hora-hoy         to jour-hora-registro
+     move 2015               to jour-anio
+     move FUNCTION UPPER-CASE(hCveRolCto)
+                             to jour-tipo-persona
+     EXEC SQL
+          INSERT INTO =SJOURNAL
+          VALUES (:jour-num-id ,:jour-num-folio-acep ,:jour-num-folio-canc
+                 ,:jour-num-contrato ,:jour-num-persona ,:jour-rfc-entidad
+                 ,:jour-fecha-registro ,:jour-hora-registro ,:jour-status
+                 ,:jour-fecha-aceptacion ,:jour-hora-aceptacion
+                 ,:jour-fecha-cancelacion ,:jour-hora-cancelacion ,:jour-anio
+                 ,:jour-tipo-persona ,:jour-campo-ad ,:jour-campo-ad1
+                 ,:jour-campo-ad2 ,:jour-campo-ad3)
+          For Repeatable access
+     END-EXEC.
+     if SQLCODE = 0 or 100
+****quitar
+*     display "    Se registra Journal= " hNumContratoAnt
+*     "|" hNumPersonaAnt
+*     "|" hDescInstrumento
+*     "|" jour-campo-ad2
+*     "|" jour-num-id
+*     upon HOME-TERM
+****quitar
+        ENTER TAL ENDTRANSACTION
+     else
+        set ESQLERR to TRUE
+        display "*** Err " SQLCODE " On INSERT-SJOURNAL" upon HOME-TERM
+        enter tal "SQLCADISPLAY" using SQLCA
+        enter tal "ABEND"
+     end-if.
+
+ GetFolioSjournal.
+     EXEC SQL
+          SELECT CASE WHEN MAX(JOUR_NUM_ID) IS NULL THEN 0
+                      ELSE MAX(JOUR_NUM_ID) END + 1
+           INTO :JOUR-NUM-ID
+           FROM =SJOURNAL
+        BROWSE ACCESS
+     END-EXEC.
+     IF SQLCODE NOT = 0
+        set ESQLERR to TRUE
+        display "*** Err " SQLCODE " On SELECT-SJOURNAL" upon HOME-TERM
+        enter tal "SQLCADISPLAY" using SQLCA
+        enter tal "ABEND"
+     END-IF.
+
+ ABRE-SQL-UPDATE-JOURNAL.
+*===================
+*  Por si no te vuelvo a ver:
+*  Transicion de estados del UUID: PENDIENTE/CONFIRMADO/PEND.CANC/CANCELADO.
+*  Nueva historia directo al estado CONFIRMADO, si el registro es
+*  PEND.CANC/CANCELADO, o PENDIENTE/CONFIRMADO con diferente UUID.
+*  En caso de reproceso, solo se actualiza fecha y hora.
+*  Un UUID podria ser reactivado * a saber *
+    EXEC SQL
+         UPDATE =SJOURNAL
+             SET jour_fecha_registro = :jour-fecha-registro
+                ,jour_hora_registro  = :jour-hora-registro
+                ,jour_status         = :jour-status
+           WHERE jour_num_contrato   = :jour-num-contrato
+             AND jour_num_persona    = :jour-num-persona
+             AND jour_campo_ad2      = :jour-campo-ad2
+    END-EXEC.
+    EVALUATE SQLCODE
+        WHEN 0  ENTER TAL ENDTRANSACTION
+        WHEN 100
+*           ENTER TAL ABORTTRANSACTION
+            PERFORM REGISTRA-SJOURNAL
+            ENTER TAL ENDTRANSACTION
+*           DISPLAY "   SJOURNAL.No existe Cto: " RFPE-NUM-CONTRATO
+*                   " Persona: "  RFPE-NUM-PERSONA
+*                   " tpoCFDI: "  JOUR-CAMPO-AD2
+*                   UPON HOME-TERM
+    END-EVALUATE.
+
+ COPY MENSAJES-OPERADOR OF "$DESA12.SCOGLCPA.C85DEFPG".
+
+* ------------------------------------------
+
+
+ 1000-AG-LY-LEX-CO.
+      PERFORM 1001-GENERALES
+      PERFORM 1100-AC-AG1
+      PERFORM 1200-AC-AG2
+      PERFORM 1300-AC-AG3
+      PERFORM 1400-AC-AG4
+      PERFORM 1500-AC-AG5
+      PERFORM 1600-AC-AG6
+      PERFORM 1700-AC-AG7
+      PERFORM 1800-AC-LEX
+      PERFORM 1900-AC-CO8
+      PERFORM 2000-AC-LY.
+
+ 1001-GENERALES.
+      MOVE "R"        to xSelectProceso
+	  if hSolicitaCFDI = "E"  
+      MOVE "00"       to xTipoReExpedicion.
+	  if hSolicitaCFDI = "C"  
+      MOVE "01"       to xTipoReExpedicion.
+	  
+      move hFechExpDD to xDia
+      move hFechExpMM to xMes
+      move hFechExpHH to xHora
+      move hFechExpMI to xMin
+      move jour-campo-ad2    to xTipoDividendo
+      move "Pago Definitivo" to xTipoRetencion
+      EVALUATE xTipoDividendo
+          when 1 move "Pago Definitivo"  to xTipoRetencion
+          when 2 move "Pago Definitivo"  to xTipoRetencion
+          when 3 move "Pago Provisional" to xTipoRetencion
+          when 4 move "Pago Definitivo"  to xTipoRetencion
+          when 5 move "Pago Definitivo"  to xTipoRetencion.
+      move "MONTERREY, NUEVO LEÓN" TO xAG5LugarExpedicion
+      STRING "LIBRAMIENTO NORTE A SANTA ROSA NO. 111, "
+             "COL. FUTURO APODACA. MONTERREY, NUEVO LEÓN."
+              delimited SIZE into xLEXLugarExp
+      if eneg-cve-empresa="CBOL"
+          move "CBDIC" to wss-ctrl-producto wss-ctrl-cf-producto
+          STRING "SCOTIA INVERLAT CASA DE BOLSA S.A. DE C.V., "
+                 "GRUPO FINANCIERO SCOTIABANK INVERLAT"
+                  delimited SIZE into xAG5NombreEmisor
+          move "SIC920427R31" to xAG5RFCemisor
+          STRING "BOSQUES DE CIRUELOS 120 PISO 4, "
+                 "BOSQUES DE LAS LOMAS, MIGUEL HIDALGO, DISTRITO FEDERAL "
+                 "11700"
+                  delimited SIZE into xAG6DirEMISOR.
+      if eneg-cve-empresa="BANC"
+          move "CBDIB" to wss-ctrl-producto wss-ctrl-cf-producto
+          move "SCOTIABANK INVERLAT, S.A." to xAG5NombreEmisor
+          move "SIN9412025I4"              to xAG5RFCemisor
+          STRING "CALLE LORENZO BOTURINI 202, COLONIA TRÁNSITO,"
+                 "CÓDIGO POSTAL 06820 MÉXICO D.F., "
+                 "DELEGACIÓN CUAUHTÃ‰MOC"
+                  delimited SIZE into xAG6DirEMISOR.
+
+ 1002-INI-AC.
+      INITIALIZE xAc-TEX-4-TotDivBruto  xAc-TEX-4-TotIsrRetExt
+                 xAc-TEX-4-TotDividendo xAc-TEX-4-TotIsrAdicional
+                 xAc-TEX-5-TotDivBruto  xAc-TEX-5-TotIsrRetExt
+                 xAc-TEX-5-TotDividendo xAc-TEX-5-TotIsrAdicional
+				 
+                 xAc-TNE-2-TotDivNal    
+                 xAc-TNE-3-TotDivNal    xAc-TNE-3-TotDivPiramidado
+                 xAc-TNE-3-TotIsrAcreditable
+                 xAc-TNG-TotDivNal      xAc-TNG-TotIsrAdicional
+                 C-CFA C-CFB C-CFBP C-CFC IND-T wss-cr
+      perform CleanTbl.
+
+ 1002-AC-CONTROL.
+      add 1 to wss-cr
+      if wss-cr > 999 move 1 to wss-cr.
+      move wss-cr to wss-ctrl-consecutivo-reg.
+
+ 1100-AC-AG1.
+    COMPUTE WSS-FOLIO =WSS-FOLIO + 1
+
+    PERFORM 1002-AC-CONTROL
+    STRING "AG1"             DELIMITED BY SIZE INTO  WSS-CTRL-TRAMA
+        STRING hNumContrato      DELIMITED BY SIZE INTO  WSS-CTRL-CONTRATO
+        STRING WSS-FOLIO         DELIMITED BY SIZE INTO  WSS-CTRL-FOLIO
+
+    STRING hNombrePersona    DELIMITED BY SIZE INTO  WSS-AG1-NOMBRE
+    STRING WSS-CTRL-PRODUCTO DELIMITED BY SIZE INTO  WSS-AG1-CLAVE-PRODUCTO
+
+    STRING hNumContrato
+          ,hNumPersona  DELIMITED BY SIZE INTO  WSS-AG1-CONTRATO
+    STRING hCveRFC           DELIMITED BY SIZE INTO  WSS-AG1-RFC
+    STRING eneg-cve-empresa  DELIMITED BY SIZE INTO  WSS-AG1-EMPRESA
+        MOVE "EXTRANJERO"  TO WSS-AG1-NACIONALIDAD
+        IF hNacionalidad="MX"
+           MOVE "NACIONAL" TO WSS-AG1-NACIONALIDAD.
+
+
+    MOVE " " TO REGSALIDA
+*    DISPLAY "   AG1: " WSS-CTRL-REG WSS-AG1-REG
+*                  UPON HOME-TERM
+
+          STRING  WSS-CTRL-REG      DELIMITED BY SIZE
+             ,WSS-AG1-REG       DELIMITED BY SIZE INTO REGSALIDA
+    perform 0010-Escribe-reg.
+
+ 1200-AC-AG2.
+      PERFORM 1002-AC-CONTROL
+      STRING "AG2"                                   DELIMITED BY SIZE INTO WSS-CTRL-TRAMA
+      STRING "DIVIDENDOS O UTILIDADES DISTRIBUIDAS"  DELIMITED BY SIZE INTO  WSS-AG2-TITULO-PRODUCTO
+      STRING mes-desc ( hMesIniVigencia )            DELIMITED BY SIZE INTO  WSS-AG2-PERIODO-INICIAL
+      STRING mes-desc ( hMesFinVigencia )            DELIMITED BY SIZE INTO  WSS-AG2-PERIODO-FINAL
+      STRING "2015"                                  DELIMITED BY SIZE INTO  WSS-AG2-EJERCICIO
+      STRING "000000"                                DELIMITED BY SIZE INTO  WSS-AG2-PROPORCION
+      STRING "2016-" , xMes , "-" , xDia             DELIMITED BY SIZE INTO  WSS-AG2-FECHA-EXPEDICION
+      STRING xHora , "-" ,xMin , "-00"               DELIMITED BY SIZE INTO  WSS-AG2-HORA-EXPEDICION
+      STRING "0" , xTipoDividendo                    DELIMITED BY SIZE INTO  WSS-AG2-TIPO-DIVIDENDO
+
+      MOVE " " TO REGSALIDA
+      STRING  WSS-CTRL-REG DELIMITED BY SIZE
+             ,WSS-AG2-REG  DELIMITED BY SIZE INTO REGSALIDA
+      perform 0010-Escribe-reg.
+ 1300-AC-AG3.
+      PERFORM 1002-AC-CONTROL
+      STRING  "AG3"                  DELIMITED BY SIZE INTO WSS-CTRL-TRAMA
+      STRING hTxtCalleNum            DELIMITED BY SIZE INTO WSS-AG3-CALLE-NUMERO
+                  STRING hTxtColonia             DELIMITED BY SIZE INTO WSS-AG3-COLONIA
+                STRING hTxtDelegacionMunicipio DELIMITED BY SIZE INTO WSS-AG3-CIUDAD
+                STRING hCodxPostal             DELIMITED BY SIZE INTO WSS-AG3-CODIGO-POSTAL
+                  STRING hNumCentroReparto       DELIMITED BY SIZE INTO WSS-AG3-CODIGO-CR
+                  STRING "2015-12-31"            DELIMITED BY SIZE INTO WSS-AG3-FECHA-CORTE
+
+                  MOVE " " TO REGSALIDA
+      STRING  WSS-CTRL-REG           DELIMITED BY SIZE
+             ,WSS-AG3-REG            DELIMITED BY SIZE INTO REGSALIDA
+      perform 0010-Escribe-reg.
+
+ 1400-AC-AG4.
+      PERFORM 1002-AC-CONTROL
+      STRING "AG4"                      DELIMITED BY SIZE INTO WSS-CTRL-TRAMA
+      STRING "2016-", xMes , "-" ,xDia  DELIMITED BY SIZE INTO WSS-AG4-FECHA-EXPEDICION
+                  STRING xHora  , "-"  ,xMin ,"-00"  DELIMITED BY SIZE INTO WSS-AG4-HORA-EXPEDICION
+
+                  MOVE " " TO REGSALIDA
+      STRING  WSS-CTRL-REG             DELIMITED BY SIZE
+             ,WSS-AG4-REG              DELIMITED BY SIZE INTO REGSALIDA
+      perform 0010-Escribe-reg.
+
+ 1500-AC-AG5.
+    PERFORM 1002-AC-CONTROL
+    MOVE "AG5"                TO WSS-CTRL-TRAMA
+    MOVE xAG5RFCemisor        TO WSS-AG5-RFC-EMISOR
+    MOVE xAG5NombreEmisor     TO WSS-AG5-NOMBRE-EMISOR
+    MOVE xAG5LugarExpedicion  TO WSS-AG5-LUGAR-EXPEDICION
+    STRING "2016-" ,xMes ,"-",xDia DELIMITED SIZE
+      INTO WSS-AG5-FECHA-EXPEDICION
+    STRING  WSS-CTRL-REG DELIMITED BY SIZE
+            WSS-AG5-REG DELIMITED BY SIZE INTO REGSALIDA
+    perform 0010-Escribe-reg.
+
+ 1600-AC-AG6.
+      PERFORM 1002-AC-CONTROL
+      MOVE "AG6" TO WSS-CTRL-TRAMA
+      STRING xAG6DirEMISOR DELIMITED BY SIZE INTO  WSS-AG6-DIR-EMISOR
+
+      MOVE " " TO REGSALIDA
+      STRING   WSS-CTRL-REG DELIMITED BY SIZE
+              ,WSS-AG6-REG DELIMITED BY SIZE INTO REGSALIDA
+      perform 0010-Escribe-reg.
+ 1700-AC-AG7.
+      PERFORM 1002-AC-CONTROL
+      MOVE "AG7" TO WSS-CTRL-TRAMA
+          MOVE "1.0" TO WSS-AG7-VER-CFDI
+                  MOVE "1.0" TO WSS-AG7-VER-COMP
+                  MOVE xTipoRetencion TO WSS-AG7-TIPO-PAGO-RET
+                  MOVE "14" TO WSS-AG7-CVE-RET
+
+      MOVE " " TO REGSALIDA
+      STRING  WSS-CTRL-REG DELIMITED BY SIZE
+              ,WSS-AG7-REG DELIMITED BY SIZE INTO REGSALIDA
+      perform 0010-Escribe-reg.
+
+ 1800-AC-LEX.
+      PERFORM 1002-AC-CONTROL
+      MOVE "LEX" TO WSS-CTRL-TRAMA
+      STRING xLEXLugarExp DELIMITED BY SIZE INTO WSS-LEX-LUGAR-EXP
+      MOVE " " TO REGSALIDA
+      STRING  WSS-CTRL-REG DELIMITED BY SIZE
+              WSS-LEX-REG  DELIMITED BY SIZE INTO REGSALIDA
+      perform 0010-Escribe-reg.
+
+ 1900-AC-CO8.
+ 
+      PERFORM 1002-AC-CONTROL
+      MOVE "CO8" TO WSS-CTRL-TRAMA
+      if xSelectProceso = "R"
+         MOVE "01"  TO WSS-NODE-EXP.
+
+      MOVE " " TO REGSALIDA
+      STRING  WSS-CTRL-REG DELIMITED BY SIZE
+              ,WSS-CO8-REG DELIMITED BY SIZE INTO REGSALIDA
+      perform 0010-Escribe-reg.
+
+
+ 
+ 
+ 50000-AC-CF1.
+    
+    if xTipoDividendo = 1                                                       
+	   move "Pago definitivo"  to  WSS-CF1-TIPO-PAGO-RETENCION.                 
+    if xTipoDividendo = 2                                                       
+	   move "Pago definitivo"  to  WSS-CF1-TIPO-PAGO-RETENCION.                 
+    if xTipoDividendo = 3                                                       
+	   move "Pago provisional" to  WSS-CF1-TIPO-PAGO-RETENCION.                 
+    if xTipoDividendo = 4                                                       
+	   move "Pago definitivo"  to  WSS-CF1-TIPO-PAGO-RETENCION.                 
+    if xTipoDividendo = 5                                                       
+	   move "Pago definitivo"  to  WSS-CF1-TIPO-PAGO-RETENCION.                 
+
+ 
+ 
+    move "CF1" to WSS-CTRL-CF-TRAMA
+
+    if xTipoDividendo=1
+	   move xAc-TNG-TotDivNal to fcin		
+       perform SetFormatBastida		
+       move fcout to WSS-CF1-MONTO-TOT-OPERACION	       
+       MOVE WSS-CF1-MONTO-TOT-OPERACION  TO  WSS-CF1-MONTO-TOT-GRAVADO 
+
+       move xAc-TNG-TotIsrAdicional to fcin		
+       perform SetFormatBastida		
+       move fcout to WSS-CF1-MONTO-TOT-RETENIDO 	       
+	   
+       MOVE "0.00"                      TO  WSS-CF1-MONTO-TOT-EXENTO   
+       
+       MOVE WSS-CF1-MONTO-TOT-OPERACION TO  WSS-CF1-BASE-RETENCION      
+       MOVE WSS-CF1-MONTO-TOT-RETENIDO  TO  WSS-CF1-MONTO-RET-ISRRET
+	   
+	   
+    end-if			
+	if xTipoDividendo=2
+       move xAc-TNE-2-TotDivNal to fcin		
+       perform SetFormatBastida		
+       move fcout to WSS-CF1-MONTO-TOT-OPERACION	       
+
+       MOVE WSS-CF1-MONTO-TOT-OPERACION  TO  WSS-CF1-MONTO-TOT-EXENTO 
+       MOVE "0.00"                       TO  WSS-CF1-MONTO-TOT-GRAVADO   
+	   MOVE "0.00"                       TO  WSS-CF1-MONTO-TOT-RETENIDO 
+	   MOVE "0.00"                       TO  WSS-CF1-BASE-RETENCION 
+	   MOVE "0.00"                       TO  WSS-CF1-MONTO-RET-ISRRET
+        
+    end-if           
+	if xTipoDividendo= 3
+	
+	   move xAc-TNE-3-TotDivPiramidado  to fcin		
+       perform SetFormatBastida		
+       move fcout to WSS-CF1-MONTO-TOT-OPERACION	       
+	   
+	   
+	   move xAc-TNE-3-TotIsrAcreditable to fcin		
+       perform SetFormatBastida		
+       move fcout to  WSS-CF1-MONTO-TOT-GRAVADO   
+	   
+	   MOVE "0.00"   TO  WSS-CF1-MONTO-TOT-EXENTO 
+	   MOVE WSS-CF1-MONTO-TOT-GRAVADO    TO  WSS-CF1-MONTO-TOT-RETENIDO 
+	   MOVE WSS-CF1-MONTO-TOT-GRAVADO    TO  WSS-CF1-BASE-RETENCION 
+	   MOVE WSS-CF1-MONTO-TOT-OPERACION  TO  WSS-CF1-MONTO-RET-ISRRET
+
+    end-if
+   
+	
+    move  WSS-AG1-CONTRATO to WSS-CF1-FOLIO-INTERNO
+            	        
+    string "2016-"      DELIMITED BY SIZE
+           xmes         DELIMITED BY SIZE
+           "-"          DELIMITED BY SIZE
+           xdia         DELIMITED BY SIZE
+           "T"          DELIMITED BY SIZE
+           xhora        DELIMITED BY SIZE
+           ":"          DELIMITED BY SIZE
+           xMin         DELIMITED BY SIZE
+           ":00"        DELIMITED BY SIZE
+           "-05:00"     DELIMITED BY SIZE
+                        INTO WSS-CF1-FECHA-EXPEDICION 
+                      
+     MOVE "14"                 TO WSS-CF1-CLAVE-RETENCION                                                                                              
+     MOVE "|"                  TO WSS-CF1-DESC-RETENCION                                                                                              
+     MOVE xAG5RFCemisor        TO WSS-CF1-RFC-EMISOR
+     MOVE xAG5NombreEmisor     TO WSS-CF1-NOMBRE-EMISOR                                                   
+     MOVE WSS-AG1-NACIONALIDAD TO WSS-CF1-NACIONALIDAD                                                                             
+     MOVE WSS-AG1-RFC          TO WSS-CF1-RFC-RECEPTOR
+     MOVE WSS-AG1-NOMBRE       TO WSS-CF1-NOMBRE-RECEPTOR
+	
+                      
+     MOVE "|" TO  WSS-CF1-CURP-RECEPTOR
+     MOVE "|" TO  WSS-CF1-TAX-ID
+     MOVE "|" TO  WSS-CF1-NOMBRE-EXTRANJERO                                                                           
+
+     move  hMesIniVigencia to WSS-CF1-MES-INICIAL
+     move  hMesFinVigencia to WSS-CF1-MES-FINAL
+
+     MOVE "2015"  TO  WSS-CF1-EJERCICIO                                                                                             
+     MOVE "01"    TO WSS-CF1-TIPO-IMPUESTO                                                                  	
+	 
+	 move space to WSS-CF1-TMP
+	 move "CF1" to WSS-CTRL-CF-TRAMA
+	 string WSS-CTRL-CF-REG        delimited by size 
+	        "|"                    delimited by size 
+	        WSS-CF1-VERSION-CF1    delimited by size 
+            "|"                    delimited by size 			
+            WSS-CF1-FOLIO-INTERNO  delimited by size
+            "|"                    delimited by size			
+            WSS-CF1-FECHA-EXPEDICION delimited by size
+            "|"                     delimited by size
+            WSS-CF1-CLAVE-RETENCION delimited by size                        
+			WSS-CF1-DESC-RETENCION  delimited "  "           
+            WSS-CF1-RFC-EMISOR      delimited " "
+            "|"                     delimited by size			
+            WSS-CF1-NOMBRE-EMISOR   delimited "  "
+            "|"                     delimited by size              
+             WSS-CF1-NACIONALIDAD   delimited "  "            
+            "|"                     delimited by size
+             WSS-CF1-RFC-RECEPTOR   delimited "  "            
+            "|"                     delimited by size
+            WSS-CF1-NOMBRE-RECEPTOR delimited " "                       
+            WSS-CF1-CURP-RECEPTOR   delimited " "            
+             WSS-CF1-TAX-ID         delimited " " 
+            "|"                     delimited by size           
+            WSS-CF1-NOMBRE-EXTRANJERO delimited " "
+            "|"                     delimited by size         
+            WSS-CF1-MES-INICIAL     
+            "|"                     delimited by size           
+            WSS-CF1-MES-FINAL       
+            "|"                     delimited by size           
+            WSS-CF1-EJERCICIO                  
+            "|"                     delimited by size
+            WSS-CF1-MONTO-TOT-OPERACION  delimited  " "       
+            "|"                     delimited by size
+            WSS-CF1-MONTO-TOT-GRAVADO delimited  " "                
+            "|"                     delimited by size
+            WSS-CF1-MONTO-TOT-EXENTO delimited  " "                 
+            "|"                         delimited by size
+            WSS-CF1-MONTO-TOT-RETENIDO  delimited  "  "              
+            "|"                         delimited by size
+            WSS-CF1-BASE-RETENCION      delimited by space       
+            "|"                         delimited by size
+            WSS-CF1-TIPO-IMPUESTO              
+            "|"                     delimited by size
+            WSS-CF1-MONTO-RET-ISRRET delimited " "           
+           "|"                     delimited by size
+            WSS-CF1-TIPO-PAGO-RETENCION delimited by size       
+			into WSS-CF1-TMP
+			
+			move spaces to WSS-CF1-TMP-1
+			move spaces to WSS-CF1-TMP-2
+			
+			Move WSS-CF1-TMP(1:250)   to WSS-CF1-TMP-1
+			move WSS-CF1-TMP(251:250) to WSS-CF1-TMP-2
+			
+			
+			if WSS-CF1-TMP-2= spaces
+			   string WSS-CF1-TMP-1 delimited by size into regsalida			
+			   perform 0010-Escribe-reg
+            else
+			   string WSS-CF1-TMP-1 delimited by size into regsalida			
+			   perform 0010-Escribe-reg
+			   
+			   string WSS-CTRL-CF-REG delimited by size 
+	                  WSS-CF1-TMP-2  delimited by size into regsalida
+	           perform 0010-Escribe-reg
+			end-if.
+	
+ 
+ 50100-AC-CF2.
+    move "CF2" to WSS-CTRL-CF-TRAMA
+	move "SOCIEDAD NACIONAL" to CF2-TipoSociedad
+	
+	   if xTipoDividendo = 1
+		  move "02" to CF2-TipoDividendo.
+	   if xTipoDividendo = 2
+			move  "06" to CF2-TipoDividendo.
+	   if xTipoDividendo = 3
+			move  "01" to CF2-TipoDividendo.
+			
+       if xTipoDividendo = 1
+            string  pAc-TNG-TotIsrAdicional
+			delimited space into CF2-MontoRetCobMexico
+					
+            move "0.00"   to CF2-MontoRetCobExt 
+            move "0.00"   to CF2-MontoRetExtCobExt
+            move "|"      to CF2-ISRAcrNacional 
+            move "|"      to CF2-DiviAcuNacional 
+            move "|"      to CF2-DiviAcuExt
+        end-if
+		
+		
+		
+            If xTipoDividendo = 2
+			    move "0.00"   to CF2-MontoRetCobMexico
+			    move "0.00"   to CF2-MontoRetCobExt                 
+                move "|"   to CF2-MontoRetExtCobExt
+				move "|"      to CF2-ISRAcrNacional 
+                move "|"      to CF2-DiviAcuNacional 
+                move "|"      to CF2-DiviAcuExt
+            End-If
+            
+            
+            If xTipoDividendo = 3
+                move "0.00"   to CF2-MontoRetCobMexico
+			    move "0.00"   to CF2-MontoRetCobExt 
+                move "|"   to CF2-MontoRetExtCobExt
+                move pAc-TNE-3-TotIsrAcreditable to CF2-ISRAcrNacional 
+                move pAc-TNE-3-TotDivPiramidado  to CF2-DiviAcuNacional 
+                move "|"      to CF2-DiviAcuExt
+            End-If
+            
+		
+		
+	    string WSS-CTRL-CF-REG         
+	           "|"                    delimited by size 
+	            CF2-VersionComplemento 	
+			   "|"                    delimited by size 
+                CF2-TipoDividendo     delimited "  "
+			   "|"                    delimited by size 
+	            CF2-MontoRetCobMexico delimited "  "
+			   "|"                    delimited by size 
+                CF2-MontoRetCobExt    delimited "  "
+			   "|"                    delimited by size 
+                CF2-MontoRetExtCobExt delimited "  "
+			   "|"                    delimited by size 
+                CF2-TipoSociedad      delimited "  "			   
+                CF2-ISRAcrNacional    delimited "  "  			   
+                CF2-DiviAcuNacional   delimited "  "
+			    CF2-DiviAcuExt        delimited "  "
+	            CF2-ProporcionRem     delimited by size   
+    		    into regsalida	
+	    perform 0010-Escribe-reg.
+	
+ 50200-AC-CF3.     
+     compute PorcDistribucion = 100  * hPorcDistribucion
+     move PorcDistribucion to fcin		
+     perform SetFormatBastida		
+     move fcout to pPorcDistribucion
+	 
+	 move "CF3" to WSS-CTRL-CF-TRAMA
+     string WSS-CTRL-CF-REG    delimited by size 
+	        "|"                delimited by size 
+             pPorcDistribucion delimited by size 
+			"|"                delimited by size 
+			xLexLugarExp       delimited "  "
+            "|"                delimited by size 
+		    xAG6DirEMISOR      delimited "  " into regsalida
+			perform 0010-Escribe-reg.
+			 
+ 60000-AC-LY-CF.
+     PERFORM 60100-AC-LY-CF-TEXT.
+     PERFORM 60200-AC-LY-CF3.
+
+     
+
+ 60100-AC-LY-CF-TEXT.
+      string "La presente constancia se expide en cumplimiento " 
+	         "a lo previsto en la legislación fiscal."  
+			 delimited size into wss-ly1-cf 
+
+      string "(1) El 10% de Impuesto sobre la Renta adicional "
+	          "por Dividendos es un impuesto definitivo y "
+			  "por lo tanto no acreditable."
+	          delimited size into wss-ly2-cf 
+			  
+      string  "(2) Provienen de la CUFIN 2014 en adelante."  
+	          delimited size into wss-ly3-cf 
+	  
+
+     string "(3) Conforme a lo establecido en la Regla 3.1.5 "
+	        "de la Resolución Miscelánea Fiscal y demás legislación "
+			"fiscal aplicable al ejercicio 2015." 
+	        delimited size into wss-ly4-cf 
+
+     string "Verificar el tratamiento con su asesor fiscal particular." 
+	        delimited size into wss-ly5-cf 
+
+     string "Lo anterior se encuentra de conformidad a lo dispuesto en "
+	        "los artículos 142 y 164 de la Ley del Impuesto sobre la Renta "
+			"y las Reglas de Resolución Miscelánea Fiscal aplicables "
+			"al ejercicio fiscal 2015."
+            delimited size into wss-ly61-cf 
+
+     string "Esta constancia contiene el resumen de los resultados "
+	        "obtenidos durante el periodo que ampara la misma, asimismo "
+			"adjunto a esta se muestra a nivel detalle dichos resultados."
+             delimited size into wss-ly71-cf 
+     string "CIFRAS EXPRESADAS EN PESOS"
+             delimited size into wss-ly8-cf.
+
+ 60200-AC-LY-CF3.
+     move "CF3" to WSS-CTRL-CF-TRAMA
+     string WSS-CTRL-CF-REG
+	         "|"  
+		     wss-ly1-cf 
+		     delimited size into regsalida
+		     perform 0010-Escribe-reg			 
+			 
+    if xTipoDividendo = 1 Or xTipoDividendo = 4 
+	   string WSS-CTRL-CF-REG
+	         "|"  
+		     wss-ly2-cf 
+			 delimited size into regsalida
+			 perform 0010-Escribe-reg
+    end-if
+			  
+    if xTipoDividendo = 1 
+       string WSS-CTRL-CF-REG
+	          "|"  
+		      wss-ly3-cf
+			  delimited size into regsalida
+			  perform 0010-Escribe-reg
+	end-if		  
+    if xTipoDividendo = 1 Or xTipoDividendo = 2 Or xTipoDividendo = 3 Or xTipoDividendo = 4 Or xTipoDividendo = 5 
+	   string WSS-CTRL-CF-REG
+	          "|"  
+		      wss-ly4-cf
+			  delimited size into regsalida
+			  perform 0010-Escribe-reg
+	end-if	
+    string WSS-CTRL-CF-REG
+		  "|"  
+		  wss-ly5-cf
+		  delimited size into regsalida
+		  perform 0010-Escribe-reg
+    
+	string WSS-CTRL-CF-REG
+		  "|"  
+		  wss-ly61-cf
+		  delimited size into regsalida
+		  perform 0010-Escribe-reg
+    
+	string WSS-CTRL-CF-REG
+		  "|"  
+		  wss-ly71-cf
+		  delimited size into regsalida
+		  perform 0010-Escribe-reg
+
+    string WSS-CTRL-CF-REG
+		  "|"  
+		  wss-ly8-cf
+		  delimited size into regsalida
+		  perform 0010-Escribe-reg
+	  
+    if xSelectProceso = "R" And xTipoReExpedicion = "00" 
+  
+	   string  "La presente constancia sustituye para todos los efectos "
+			   "legales a que haya lugar, a cualquier otro documento emitido "
+			   "con anterioridad por SCOTIABANK INVERLAT,S.A., para los mismos "
+			   "efectos del presente contrato " 
+				WSS-CTRL-CONTRATO
+			   " por el periodo que"                                                                                                                                                                                                                             
+			   delimited size into wss-ly91-cf
+	   string  " ampara la misma." 
+			   delimited size into wss-ly92-cf 
+			   
+   
+   
+	   if WSS-CTRL-PRODUCTO = "CBDIC"
+		   string "La presente constancia sustituye para todos los efectos "
+				  "legales a que haya lugar, a cualquier otro documento "
+				  "emitido con anterioridad por "
+				  "SCOTIA INVERLAT CASA DE BOLSA S.A. DE C.V., "				  
+				  "GRUPO FINANCIERO SCOTIABANK INVERLAT, para los mismos ef" 
+				  delimited size into wss-ly91-cf 
+		   string "ectos del presente contrato " 
+				   WSS-CTRL-CONTRATO
+				  " por el período que ampara la misma." 
+				  delimited size into wss-ly92-cf    
+	   end-if
+	   
+  end-if
+  
+  if xSelectProceso = "R" And xTipoReExpedicion = "01" 
+     string "Se emite la presente constancia a petición del "
+              "interesado, la cual sustituye para todos los efectos "
+			  "legales a que haya lugar, a  cualquier otro documento "
+			  "emitido con anterioridad  para los mismos efectos por "
+			  "SCOTIA INVERLAT,S.A.,del contr" 
+              delimited size into wss-ly91-cf 
+     string "rato" 
+             WSS-CTRL-CONTRATO
+	        " por el período que ampara la misma" 
+		     delimited size into wss-ly92-cf 
+   
+    if WSS-CTRL-PRODUCTO = "CBDIC"
+       string "Se emite la presente constancia a petición del interesado, "
+	          "la cual sustituye para todos los efectos legales a que haya lugar, "
+		      "a  cualquier otro documento emitido con anterioridad para los mismos "
+			  "efectos por SCOTIA INVERLAT CASA BOLSA S.A."
+	          delimited size into wss-ly91-cf 
+       string " DE C.V., GRUPO FINANCIERO SCOTIABANK INVERLAT, del contrato " 
+	          WSS-CTRL-CONTRATO
+    		  " por el período que ampara la misma"
+	          delimited size into wss-ly92-cf 
+   end-if
+  end-If
+  
+  if xSelectProceso = "R" Then
+      string WSS-CTRL-CF-REG
+		  "|"  
+		  wss-ly91-cf
+		  delimited size into regsalida
+		  perform 0010-Escribe-reg
+
+      string WSS-CTRL-CF-REG
+		  " "  
+		  wss-ly92-cf
+		  delimited size into regsalida
+		  perform 0010-Escribe-reg
+
+   
+  end-If.
+
+
+
+
+
+ 2000-AC-LY.
+      PERFORM 2001-AC-LY-TEXT.
+      PERFORM 2100-AC-LY1.
+      PERFORM 2200-AC-LY2.
+      PERFORM 2300-AC-LY3.
+      PERFORM 2400-AC-LY4.
+      PERFORM 2500-AC-LY5.
+      PERFORM 2600-AC-LY61.
+      PERFORM 2700-AC-LY62.
+      PERFORM 2800-AC-LY71.
+      PERFORM 2900-AC-LY72.
+      PERFORM 3000-AC-LY8.
+      PERFORM 3100-AC-LY9.
+
+ 2001-AC-LY-TEXT.
+     STRING "La presente constancia se expide en cumplimiento "
+            "a lo previsto en la legislación fiscal."
+             delimited SIZE into wss-ly1
+     STRING "(1) El 10% de Impuesto sobre la Renta adicional por "
+            "Dividendos es un impuesto definitivo "
+            "y por lo tanto no acreditable."
+             delimited SIZE into wss-ly2
+     STRING "(2) Provienen de la CUFIN 2014 en adelante."
+             delimited SIZE into wss-ly3
+     STRING "(3) Conforme a lo establecido en la Regla 3.1.5 "
+            "de la Resolución Miscelánea Fiscal ,legislación "
+            "fiscal aplicable al ejercicio 2015."
+             delimited SIZE into wss-ly4
+     STRING "Verificar el tratamiento con su asesor "
+            "fiscal particular."
+             delimited SIZE into wss-ly5
+     STRING "Lo anterior se encuentra de conformidad a lo dispuesto "
+            "en los artículos 142 y 164 de la Ley del Impuesto sobre "
+            "la Renta y las Reglas de Resolución Mis"
+             delimited SIZE into wss-ly61
+     STRING "celánea Fiscal aplicables al ejercicio fiscal 2015."
+             delimited SIZE into wss-ly62
+     STRING "Esta constancia contiene el resumen de los "
+            "resultados obtenidos durante el periodo que "
+            "ampara la misma,asimismo adjunto a esta se "
+            "muestra a nivel detalle dichos resultados."
+             delimited SIZE into wss-ly71
+     STRING "alle dichos resultados."
+             delimited SIZE into wss-ly72
+     STRING "CIFRAS EXPRESADAS EN PESOS"
+             delimited SIZE into wss-ly8
+     STRING "La presente constancia sustituye para todos los "
+            "efectos legales a que haya lugar, a cualquier otro "
+            "documento emitido con anterioridad por SCOTIA INVER"
+             delimited SIZE into wss-ly91-cb-00
+     STRING "LAT CASA DE BOLSA S.A. DE C.V., GRUPO FINANCIERO "
+            "SCOTIABANK INVERLAT, para los mismos efectos del "
+            "presente contrato "
+             delimited SIZE into wss-ly92-1-cb-00
+     STRING " por el período que ampar"
+             delimited SIZE into wss-ly92-3-cb-00
+     STRING "a la misma."
+             delimited SIZE into wss-ly93-cb-00
+			 
+     STRING "Se emite la presente constancia a petición del interesado, "
+            "la cual sustituye para todos los efectos legales a que haya "
+            "lugar, a cualquier otro documen"
+             delimited SIZE into wss-ly91-cb-01
+     STRING "to emitido con anterioridad para los mismos efectos "
+            "por SCOTIA INVERLAT CASA DE BOLSA S.A. DE C.V., "
+            "GRUPO FINANCIERO SCOTIABANK INVERLAT, del contrato "
+             delimited SIZE into wss-ly92-cb-01
+			 
+     STRING " por el período que ampara la misma."
+             delimited SIZE into wss-ly93-cb-01
+			 
+     STRING "La presente constancia sustituye para todos los efectos "
+            "legales a que haya lugar, a cualquier otro documento "
+            "emitido con anterioridad por SCOTIABANK I"
+             delimited SIZE into wss-ly91-bn-00
+     STRING "NVERLAT, S.A., para los mismos efectos del presente contrato "
+             delimited SIZE into wss-ly92-1-bn-00
+     STRING " por el período que ampara la misma."
+             delimited SIZE into wss-ly92-3-bn-00
+     STRING "Se emite la presente constancia a petición del interesado, "
+            "la cual sustituye para todos los efectos legales a "
+            "que haya lugar, a cualquier otro documen"
+             delimited SIZE into wss-ly91-bn-01
+     STRING "to emitido con anterioridad para los mismos efectos "
+            "por  SCOTIABANK INVERLAT,S.A., del contrato "
+             delimited SIZE into wss-ly92-1-bn-01
+     STRING " por el período que ampara la misma."
+             delimited SIZE into wss-ly92-3-bn-01.
+			 
+
+ 2100-AC-LY1.
+      PERFORM 1002-AC-CONTROL
+      MOVE "LY1" TO WSS-CTRL-TRAMA
+      STRING WSS-CTRL-REG DELIMITED BY SIZE
+            ,WSS-LY1      DELIMITED BY SIZE INTO REGSALIDA
+      perform 0010-Escribe-reg.
+
+ 2200-AC-LY2.
+      if xTipoDividendo = 1 Or xTipoDividendo = 4 Or xTipoDividendo = 6
+        PERFORM 1002-AC-CONTROL
+        MOVE "LY2" TO WSS-CTRL-TRAMA
+
+        STRING WSS-CTRL-REG DELIMITED BY SIZE
+              ,WSS-LY2 DELIMITED BY SIZE INTO REGSALIDA
+        perform 0010-Escribe-reg
+      end-if.
+
+ 2300-AC-LY3.
+     If xTipoDividendo = 1 Or xTipoDividendo = 6
+        PERFORM 1002-AC-CONTROL
+        MOVE "LY3" TO WSS-CTRL-TRAMA
+        STRING WSS-CTRL-REG DELIMITED BY SIZE
+              ,WSS-LY3 DELIMITED BY SIZE INTO REGSALIDA
+        perform 0010-Escribe-reg
+     end-if.
+
+ 2400-AC-LY4.
+      PERFORM 1002-AC-CONTROL
+      MOVE "LY4" TO WSS-CTRL-TRAMA
+      STRING WSS-CTRL-REG DELIMITED BY SIZE
+            ,WSS-LY4 DELIMITED BY SIZE INTO REGSALIDA
+      perform 0010-Escribe-reg.
+
+ 2500-AC-LY5.
+      PERFORM 1002-AC-CONTROL
+      MOVE "LY5" TO WSS-CTRL-TRAMA
+      STRING WSS-CTRL-REG DELIMITED BY SIZE
+            ,WSS-LY5 DELIMITED BY SIZE INTO REGSALIDA
+      perform 0010-Escribe-reg.
+
+ 2600-AC-LY61.
+      PERFORM 1002-AC-CONTROL
+      MOVE "LY6" TO WSS-CTRL-TRAMA
+      STRING WSS-CTRL-REG DELIMITED BY SIZE
+            ,WSS-LY61 DELIMITED BY SIZE INTO REGSALIDA
+      perform 0010-Escribe-reg.
+
+ 2700-AC-LY62.
+      PERFORM 1002-AC-CONTROL
+      MOVE "LY6" TO WSS-CTRL-TRAMA
+      STRING WSS-CTRL-REG DELIMITED BY SIZE
+            ,WSS-LY62      DELIMITED BY SIZE INTO REGSALIDA
+      perform 0010-Escribe-reg.
+
+ 2800-AC-LY71.
+      PERFORM 1002-AC-CONTROL
+      MOVE "LY7" TO WSS-CTRL-TRAMA
+      STRING WSS-CTRL-REG DELIMITED BY SIZE
+            ,WSS-LY71     DELIMITED BY SIZE INTO REGSALIDA
+      perform 0010-Escribe-reg.
+
+ 2900-AC-LY72.
+      PERFORM 1002-AC-CONTROL
+      MOVE "LY7" TO WSS-CTRL-TRAMA
+      STRING WSS-CTRL-REG DELIMITED BY SIZE
+            ,WSS-LY72     DELIMITED BY SIZE INTO REGSALIDA
+      perform 0010-Escribe-reg.
+
+ 3000-AC-LY8.
+      PERFORM 1002-AC-CONTROL
+      MOVE "LY8" TO WSS-CTRL-TRAMA
+      STRING WSS-CTRL-REG DELIMITED BY SIZE
+            ,WSS-LY8      DELIMITED BY SIZE INTO REGSALIDA
+      perform 0010-Escribe-reg.
+
+ 3100-AC-LY9.
+      If xSelectProceso = "R" and  xTipoReExpedicion = "00"
+         If WSS-CTRL-PRODUCTO = "CBDIB"
+            STRING  WSS-LY91-BN-00 DELIMITED BY SIZE
+                    INTO WSS-LY91
+
+            STRING  WSS-LY92-1-BN-00      DELIMITED BY SIZE
+                       ,WSS-CTRL-CONTRATO DELIMITED BY SIZE
+                       ,WSS-LY92-3-BN-00  DELIMITED BY SIZE INTO WSS-LY92
+        end-if
+
+        if WSS-CTRL-PRODUCTO = "CBDIC"
+            STRING  WSS-LY91-CB-00 DELIMITED BY SIZE
+                    INTO WSS-LY91
+
+            STRING  WSS-LY92-1-CB-00      DELIMITED BY SIZE
+                       ,WSS-CTRL-CONTRATO DELIMITED BY SIZE
+                       ,WSS-LY92-3-CB-00  DELIMITED BY SIZE INTO WSS-LY92
+
+            STRING  WSS-LY93-CB-00 DELIMITED BY SIZE
+                    INTO WSS-LY93
+        end-if
+      end-if
+
+      if xSelectProceso = "R"  and xTipoReExpedicion = "01"
+         if WSS-CTRL-PRODUCTO = "CBDIB"
+            STRING  WSS-LY91-BN-01 DELIMITED BY SIZE
+                    INTO WSS-LY91
+
+            STRING  WSS-LY92-1-BN-01       DELIMITED BY SIZE
+                       ,WSS-CTRL-CONTRATO  DELIMITED BY SIZE
+                       ,WSS-LY92-3-BN-01   DELIMITED BY SIZE INTO WSS-LY92
+         end-if
+        
+		
+		if WSS-CTRL-PRODUCTO = "CBDIC"
+            STRING  WSS-LY91-CB-01      DELIMITED BY SIZE
+                    INTO WSS-LY91
+
+            STRING  WSS-LY92-CB-01      DELIMITED BY SIZE                                          
+				   INTO WSS-LY92
+
+            STRING   WSS-CTRL-CONTRATO  DELIMITED BY SIZE
+			         WSS-LY93-CB-01     DELIMITED BY SIZE
+					 INTO WSS-LY93
+         end-if
+      end-if
+      if xSelectProceso = "R"
+         PERFORM 1002-AC-CONTROL
+         MOVE "LY9" TO  WSS-CTRL-TRAMA
+         STRING WSS-CTRL-REG DELIMITED BY SIZE
+               ,WSS-LY91     DELIMITED BY SIZE INTO REGSALIDA
+         perform 0010-Escribe-reg
+
+         PERFORM 1002-AC-CONTROL
+         MOVE "LY9" TO  WSS-CTRL-TRAMA
+         STRING WSS-CTRL-REG DELIMITED BY SIZE
+               ,WSS-LY92     DELIMITED BY SIZE INTO REGSALIDA
+         perform 0010-Escribe-reg
+
+         if WSS-CTRL-PRODUCTO = "CBDIC"
+                  PERFORM 1002-AC-CONTROL
+                  MOVE "LY9" TO  WSS-CTRL-TRAMA
+                  STRING WSS-CTRL-REG DELIMITED BY SIZE
+                        ,WSS-LY93     DELIMITED BY SIZE INTO REGSALIDA
+            perform 0010-Escribe-reg
+        end-if
+     end-if.
+
+ 40000-AC-RNG.
+     if xTipoDividendo = 1
+        MOVE hDescInstrumento to RNG-Emisora
+		
+        move hTotalDividendo to fcin		
+        perform SetFormatBastida		
+        move fcout to RNG-DivNal
+		
+        move hRetencion10ISRadivExt to fcin
+        perform SetFormatBastida
+        move fcout to RNG-IsrAdicional
+
+        COMPUTE xAc-TNG-TotDivNal
+              = xAc-TNG-TotDivNal
+              + hTotalDividendo
+			  
+        COMPUTE xAc-TNG-TotIsrAdicional
+              = xAc-TNG-TotIsrAdicional
+              + hRetencion10ISRadivExt
+			  
+        ADD 1 TO IND-DET IND-CF
+        STRING WSS-CTRL-PRODUCTO
+               "  CFA |" delimited SIZE
+               RNG-Emisora
+               "|"
+               RNG-DivNal
+               "||"
+               RNG-IsrAdicional delimited SPACE
+               into WSS-T-CF ( IND-CF )
+
+        move hTotalDividendo to fcin
+        perform SetFormat
+        move fcout to RNG-DivNal
+        move hRetencion10ISRadivExt to fcin
+        perform SetFormat
+        move fcout to RNG-IsrAdicional
+        STRING WSS-RNG-REG  DELIMITED  SIZE INTO WSS-T-DETALLE ( IND-DET )
+		
+     end-if.
+
+
+ 30000-DUMP-DETALLE.
+     PERFORM 1002-AC-CONTROL
+     if xTipoDividendo = 1
+	    MOVE "RNG" TO  WSS-CTRL-TRAMA.
+     if xTipoDividendo = 2  or xTipoDividendo = 3		
+		MOVE "RNE" TO  WSS-CTRL-TRAMA.
+	 if xTipoDividendo = 4  or xTipoDividendo = 5		
+		MOVE "REX" TO  WSS-CTRL-TRAMA.
+     	
+     
+	 perform varying t from 1 by 1
+             until t > IND-DET       
+            STRING WSS-CTRL-REG DELIMITED BY SIZE
+                  ,WSS-T-DETALLE(t) DELIMITED BY SIZE INTO REGSALIDA
+             PERFORM 0010-Escribe-reg
+     end-perform.
+     
+ 30100-DUMP-CF.   
+      perform varying t from 1 by 1
+            until t > IND-CF
+            STRING WSS-T-CF(t) DELIMITED BY SIZE INTO REGSALIDA
+                PERFORM 0010-Escribe-reg
+      end-perform.
+ 
+
+ 40200-AC-TNG.
+    If xTipoDividendo = 1
+       PERFORM 1002-AC-CONTROL
+	   MOVE "TNG" TO  WSS-CTRL-TRAMA
+	   
+	   move xAc-TNG-TotDivNal to fcin		
+       perform SetFormat		
+       move fcout to pAc-TNG-TotDivNal
+		
+	   move xAc-TNG-TotIsrAdicional to fcin		
+       perform SetFormat
+       move fcout to pAc-TNG-TotIsrAdicional
+			
+       STRING WSS-CTRL-REG DELIMITED BY SIZE
+             ,WSS-TNG-P-REG  DELIMITED BY SIZE INTO REGSALIDA
+       PERFORM 0010-Escribe-reg
+    End-If.
+
+   
+ 40300-AC-CT1.
+      If xTipoDividendo = 1
+	    move xAc-TNG-TotDivNal to fcin		
+        perform SetFormatBastida
+        move fcout to pAc-TNG-TotDivNal
+		
+	    move xAc-TNG-TotIsrAdicional to fcin		
+        perform SetFormatBastida
+        move fcout to pAc-TNG-TotIsrAdicional
+		
+        MOVE "CT1" TO  WSS-CTRL-CF-TRAMA
+        STRING  WSS-CTRL-CF-REG          DELIMITED BY SIZE
+              ,"|TOTAL|"                 DELIMITED BY SIZE
+              ,pAc-TNG-TotDivNal         delimited SPACE
+              ,"|||"                     DELIMITED BY SIZE              
+              ,pAc-TNG-TotIsrAdicional   delimited SPACE INTO REGSALIDA
+         PERFORM 0010-Escribe-reg
+
+      End-If.
+
+	  
+	  
+
+ 
+ 
+ 50000-AC-RNE.
+     if xTipoDividendo = 2
+        MOVE hDescInstrumento             TO RNE-2-Emisora
+        
+		move hTotalDividendo to fcin		
+        perform SetFormatBastida		
+        move fcout to RNE-2-DivNal
+		
+        COMPUTE xAc-TNE-2-TotDivNal 
+       		  = xAc-TNE-2-TotDivNal 
+		      + hTotalDividendo
+
+			  
+		ADD 1 TO IND-DET IND-CF
+        STRING WSS-CTRL-PRODUCTO delimited SIZE
+               "  CFB |"         delimited SIZE
+			   RNE-2-Emisora    DELIMITED SPACES
+               "|"              DELIMITED BY SIZE
+               RNE-2-DivNal     DELIMITED SPACES
+               "|"              DELIMITED BY SIZE
+               "|"              DELIMITED BY SIZE         	
+		       into WSS-T-CF ( IND-CF )
+	  
+		move hTotalDividendo to fcin
+        perform SetFormat
+        move fcout to RNE-2-DivNal		
+        STRING WSS-RNE-2-REG  DELIMITED  SIZE INTO WSS-T-DETALLE ( IND-DET )	  
+		
+     end-if
+
+     if xTipoDividendo = 3
+        MOVE hDescInstrumento             TO RNE-3-Emisora
+        MOVE hTotalDividendo              TO RNE-3-DivNal
+        MOVE hDividendoBrutoSujetoRet     TO RNE-3-DivPiramidado
+        MOVE hISRretenidoExtranjero       TO RNE-3-IsrAcreditable
+		
+		move hTotalDividendo to fcin		
+        perform SetFormatBastida		
+        move fcout to RNE-3-DivNal
+		
+		move hDividendoBrutoSujetoRet to fcin		
+        perform SetFormatBastida		
+        move fcout to RNE-3-DivPiramidado
+		
+		move hISRretenidoExtranjero to fcin		
+        perform SetFormatBastida		
+        move fcout to RNE-3-IsrAcreditable
+		
+
+        COMPUTE xAc-TNE-3-TotDivNal         
+		      = xAc-TNE-3-TotDivNal
+              + hTotalDividendo
+			  
+        COMPUTE xAc-TNE-3-TotDivPiramidado  
+		      = xAc-TNE-3-TotDivPiramidado
+              + hDividendoBrutoSujetoRet
+			  
+        COMPUTE xAc-TNE-3-TotIsrAcreditable 
+		      = xAc-TNE-3-TotIsrAcreditable
+              + hISRretenidoExtranjero
+			  
+        ADD 1 TO IND-DET IND-CF
+        STRING  WSS-CTRL-PRODUCTO
+               ,"  "
+               ,"CFB "
+               ,"|"
+               ,RNE-3-Emisora
+               ,"|"
+               ,RNE-3-DivNal
+               ,"|"
+               ,RNE-3-DivPiramidado
+               ,"|"
+               ,RNE-3-IsrAcreditable DELIMITED BY SIZE
+               into WSS-T-CF ( IND-CF )
+        
+		move hTotalDividendo to fcin
+        perform SetFormat
+        move fcout to RNE-3-DivNal
+		
+        move hDividendoBrutoSujetoRet to fcin		
+        perform SetFormat
+        move fcout to RNE-3-DivPiramidado
+		
+		move hISRretenidoExtranjero to fcin		
+        perform SetFormat		
+        move fcout to RNE-3-IsrAcreditable
+		STRING WSS-RNE-3-REG  DELIMITED  SIZE INTO WSS-T-DETALLE ( IND-DET )	  
+		
+     end-if.
+
+	 
+	 
+	 
+ 
+ 50200-AC-TNE.
+     If xTipoDividendo = 2 or xTipoDividendo = 3
+       PERFORM 1002-AC-CONTROL
+	   MOVE "TNE" TO  WSS-CTRL-TRAMA
+	   If xTipoDividendo = 2   
+	      move xAc-TNE-2-TotDivNal to fcin		
+          perform SetFormat		
+          move fcout to pAc-TNE-2-TotDivNal
+		
+	      STRING WSS-CTRL-REG DELIMITED BY SIZE
+             ,WSS-TNE-2-P-REG DELIMITED BY SIZE INTO REGSALIDA
+	   end-If
+	   
+       
+       
+	   If xTipoDividendo = 3
+	      move xAc-TNE-3-TotDivNal to fcin		
+          perform SetFormat		
+          move fcout to pAc-TNE-3-TotDivNal
+		  
+		  move xAc-TNE-3-TotDivPiramidado to fcin		
+          perform SetFormat
+          move fcout to pAc-TNE-3-TotDivPiramidado
+		  
+		  move xAc-TNE-3-TotIsrAcreditable to fcin		
+          perform SetFormat
+          move fcout to xAc-TNE-3-TotIsrAcreditable
+		  
+		  STRING WSS-CTRL-REG DELIMITED BY SIZE
+             ,WSS-TNE-3-P-REG DELIMITED BY SIZE INTO REGSALIDA
+	   end-if 	
+	   PERFORM 0010-Escribe-reg
+    End-If.
+	
+ 50300-AC-CT2.
+   If xTipoDividendo = 2 or xTipoDividendo = 3
+    MOVE "CT2" TO  WSS-CTRL-CF-TRAMA
+	
+    move xAc-TNE-2-TotDivNal to fcin		
+    perform SetFormatBastida
+    move fcout to pAc-TNE-2-TotDivNal
+
+    If xTipoDividendo = 2
+        STRING WSS-CTRL-CF-TRAMA
+              ,"|TOTAL|"
+              ,pAc-TNE-2-TotDivNal
+              ,"|"
+              ,"|"
+              DELIMITED BY SIZE INTO REGSALIDA
+    End-If
+
+    If xTipoDividendo = 3
+	   move xAc-TNE-3-TotDivNal to fcin		
+       perform SetFormatBastida
+       move fcout to pAc-TNE-3-TotDivNal
+	   
+	   move xAc-TNE-3-TotDivPiramidado to fcin		
+       perform SetFormatBastida
+       move fcout to pAc-TNE-3-TotDivPiramidado
+	   
+	   move xAc-TNE-3-TotIsrAcreditable to fcin		
+       perform SetFormatBastida
+       move fcout to pAc-TNE-3-TotIsrAcreditable
+	   
+       STRING WSS-CTRL-CF-TRAMA          DELIMITED BY SIZE
+            ,"|TOTAL|"                   DELIMITED BY SIZE
+            ,pAc-TNE-3-TotDivNal         DELIMITED space
+            ,"|"                         DELIMITED BY SIZE
+            ,pAc-TNE-3-TotDivPiramidado  DELIMITED space
+            ,"|"                         DELIMITED BY SIZE
+            ,pAc-TNE-3-TotIsrAcreditable DELIMITED BY space INTO REGSALIDA
+    end-if
+ end-if.
+ 
+
+ 4200-AC-REX.
+    if xTipoDividendo = 4 Or xTipoDividendo = 5
+      PERFORM 1002-AC-CONTROL
+      MOVE "REX" TO  WSS-CTRL-TRAMA
+      ADD 1 TO IND-DET IND-CF
+
+      if xTipoDividendo = 4
+         MOVE hDescInstrumento             TO REX-4-Emisora
+         MULTIPLY hDividendoBrutoSujetoRet BY hPorcDistribucion GIVING REX-4-DivBruto
+         MULTIPLY hRetencion10ISRadivExt   BY hPorcDistribucion GIVING REX-4-IsrAdicional
+
+         COMPUTE xAc-TEX-4-TotDivBruto       = xAc-TEX-4-TotDivBruto      + REX-4-DivBruto
+         COMPUTE xAc-TEX-4-TotIsrAdicional   = xAc-TEX-4-TotIsrAdicional  + REX-4-IsrAdicional
+
+         STRING WSS-CTRL-REG DELIMITED BY SIZE
+              ,WSS-REX-4-REG  DELIMITED BY SIZE INTO WSS-T-DETALLE ( IND-DET )	  
+
+         STRING  WSS-CTRL-PRODUCTO
+               ,"  "
+               ,"CFC "
+               ,REX-4-Emisora
+               ,"|"
+               ,REX-4-DivBruto
+               ,"|"
+               ,"|"
+               ,REX-4-IsrAdicional DELIMITED BY SIZE
+         INTO WSS-T-CF(IND-CF)
+
+
+
+      end-if
+      if xTipoDividendo = 5
+         MOVE     hDescInstrumento         TO REX-5-Emisora
+         MULTIPLY hDividendoBrutoSujetoRet BY hPorcDistribucion GIVING  REX-5-DivBruto
+         MULTIPLY hISRretenidoExtranjero   BY hPorcDistribucion GIVING  REX-5-IsrRetExt
+         MULTIPLY hTotalDividendo          BY hPorcDistribucion GIVING  REX-5-Dividendo
+         MULTIPLY hRetencion10ISRadivExt   BY hPorcDistribucion GIVING  REX-5-IsrAdicional
+* OJO Expected numeric or numeric-edited data item
+         COMPUTE xAc-TEX-5-TotDivBruto     = xAc-TEX-5-TotDivBruto      + REX-5-DivBruto
+*--1     COMPUTE xAc-TEX-5-TotIsrRetExt    = xAc-TEX-5-TotIsrRetExt     + REX-5-IsrRetExt
+*--2     COMPUTE xAc-TEX-5-TotDividendo    = xAc-TEX-5-TotDividendo     + REX-5-Dividendo
+*         COMPUTE xAc-TEX-5-TotIsrAdicional = xAc-TEX-5-TotIsrAdicional  + REX-5-IsrAdicional
+
+         STRING WSS-CTRL-REG DELIMITED BY SIZE
+              ,WSS-REX-5-REG  DELIMITED BY SIZE  INTO WSS-T-DETALLE ( IND-DET )
+         STRING  WSS-CTRL-PRODUCTO DELIMITED BY SIZE
+               ,"  "               DELIMITED BY SIZE
+               ,"CFC "             DELIMITED BY SIZE
+               ,REX-5-Emisora      DELIMITED BY SIZE
+               ,"|"                DELIMITED BY SIZE
+               ,REX-5-DivBruto     DELIMITED BY SIZE
+               ,"|"                DELIMITED BY SIZE
+               ,REX-5-IsrRetExt    DELIMITED BY SIZE
+               ,"|"                DELIMITED BY SIZE
+               ,REX-5-Dividendo    DELIMITED BY SIZE
+               ,"|"                DELIMITED BY SIZE INTO WSS-T-CF(IND-CF)
+
+
+
+
+*If xTipoDividendo = 5 And Flag52 Then
+*xAc_dTEX_TotDividendo = xAc_dTEX_TotDividendo + CDbl(rsDetalle!DividendoBrutoSujetoRetenciones) * pd
+* Else
+*xAc-TEX-TotDividendo = xAc-TEX-TotDividendo + CDbl(rsDetalle!TotalDividendo) * pd
+*End If
+
+      end-if
+
+    end-if.
+
+ 4300-AC-TEX.
+      if xTipoDividendo = 4 Or xTipoDividendo = 5
+            if xTipoDividendo = 4
+               CONTINUE
+            end-if
+            if xTipoDividendo = 5
+               CONTINUE
+            end-if
+       end-if.
+
+ 10000-AC-RE1.
+  if xTipoDividendo = 1 or   xTipoDividendo = 2  or xTipoDividendo = 4 or xTipoDividendo = 6
+     PERFORM 1002-AC-CONTROL
+     MOVE "RE1" TO  WSS-CTRL-TRAMA
+     if xTipoDividendo = 1
+	 
+	    move xAc-TNG-TotDivNal to fcin		
+        perform SetFormat
+        move fcout to RE1-1-DIV-NAC-GRAVADO
+		
+		move xAc-TNG-TotIsrAdicional to fcin		
+        perform SetFormat
+        move fcout to RE1-1-ISR-NACIONAL
+			 
+        STRING WSS-CTRL-REG  DELIMITED BY SIZE
+       ,WSS-RE1-1-REG DELIMITED BY SIZE INTO REGSALIDA
+     end-if
+
+     if xTipoDividendo = 2
+	    move xAc-TNE-2-TotDivNal to fcin		
+        perform SetFormat
+        move fcout to RE1-2-DIV-NAC-EXENTO
+	
+        STRING WSS-CTRL-REG  DELIMITED BY SIZE
+                    ,WSS-RE1-2-REG DELIMITED BY SIZE INTO REGSALIDA
+     end-if
+
+     if xTipoDividendo = 4
+        MOVE xAc-TEX-4-TotDivBruto     TO RE1-4-DIV-EXTRANJERA
+        MOVE xAc-TEX-4-TotIsrAdicional TO RE1-4-ISR-EXTRANJERA
+        STRING WSS-CTRL-REG  DELIMITED BY SIZE
+                    ,WSS-RE1-4-REG DELIMITED BY SIZE INTO REGSALIDA
+     end-if
+     PERFORM 0010-Escribe-reg
+  end-if.
+
+ 10100-AC-RE2.
+  if xTipoDividendo = 3 or xTipoDividendo = 5  or xTipoDividendo = 6
+     PERFORM 1002-AC-CONTROL
+     MOVE "RE2" TO  WSS-CTRL-TRAMA
+     if xTipoDividendo = 3
+	    move xAc-TNE-3-TotDivPiramidado to fcin		
+        perform SetFormat
+        move fcout to RE2-3-DIV-ACUMULABLE
+		
+		move xAc-TNE-3-TotIsrAcreditable to fcin		
+        perform SetFormat
+        move fcout to  RE2-3-RET-EXT
+				
+        STRING WSS-CTRL-REG  DELIMITED BY SIZE
+              ,WSS-RE2-3-REG DELIMITED BY SIZE INTO REGSALIDA
+     end-if
+     PERFORM 0010-Escribe-reg
+  end-if.
+
+* 11000-AC-CF2.
+*    if xTipoDividendo=4 or xTipoDividendo= 5
+*            If xTipoDividendo = 4 Then
+*                MOVE  "|0.00" TO CF2-MontoRetCobMexico
+*                STRING "|"
+*                                     ,xAc-TEX-TotIsrAdicional DELIMITED BY " " INTO CF2-MontoRetCobExt
+
+*                STRING "|"
+*                                     ,xAc-TEX-TotIsrRetExt   INTO CF2-MontoRetExtCobExt
+
+*                STRING "|" INTO CF2-ISRAcrNacional
+*                STRING "|" INTO CF2-DiviAcuNacional
+*                STRING "|" INTO CF2-DivAcumuladoExt
+*            Else
+*                       CONTINUE
+*               STRING  "|0.00"  INTO CF2-MontoRetCobMexico
+*                STRING  "|0.00"  INTO CF2-MontoRetCobExt
+*                STRING  "|"
+*                       ,xAc-TEX-TotIsrRetExt INTO  CF2-MontoRetExtCobExt
+*                STRING "|" INTO CF2-ISRAcrNacional
+*                STRING "|" INTO CF2-DivAcuNacional
+*                STRING "|"
+*                                      ,xAc-TEX-TotDivBruto INTO CF2-DivAcuExt
+*            End If
+
+*                       move "SOCIEDAD EXTRANJERA" to CF2-TipoSociedad
+*            MOVE "02" TO  CF2-TipoDividendo
+*       end-if
+
+*    if xTipoDividendo=1 or xTipoDividendo=2 or xTipoDividendo=3
+*            move "SOCIEDAD NACIONAL" to CF2-TipoSociedad
+*            If xTipoDividendo = 1
+*                           move  "02" to CF2-TipoDividendo.
+*            If xTipoDividendo = 2
+*                           move  "06" to CF2-TipoDividendo.
+*            If xTipoDividendo = 3
+*                       move  "01" to CF2-TipoDividendo.
+
+*            if xTipoDividendo = 1
+*                 STRING "|"
+*                                      ,xAc-RNG-TotIsrAdicional INTO CF2-MontoRetCobMexico
+*                 STRING "|0.00" INTO CF2-MontoRetCobExt
+*                 STRING "|0.00" INTO CF2-MontoRetExtCobExt
+*                 STRING "|"     INTO CF2-ISRAcreNacional
+*                 STRING "|"     INTO CF2-DiviAcuNacional
+*                 STRING "|"     INTO CF2-DiviAcuExt
+*            end If
+
+*            If xTipoDividendo = 2
+*                STRING "|0.00"  INTO CF2-MontoRetCobMexico
+*                STRING "|0.00"  INTO CF2-MontoRetCobExt
+*                STRING  "|"     INTO CF2-MontoRetExtCobExt
+*                STRING  "|"     INTO CF2-ISRAcreNacional
+*                STRING  "|"     INTO CF2-DiviAcuNacional
+*                STRING  "|"     INTO CF2-DiviAcuExt
+*            end-If
+*CONTINUE
+* end-if.
+
+
+ SetFormat.
+     INITIALIZE fcout
+     move 1 to Fpnt
+     move fcin to EDIT-DROP-LEAD-ZEROES
+     move EDIT-DROP-LEAD-ZEROES to fcout
+     move fcout(1:1) to Fsign
+     move SPACE to fcout (1:1)
+     STRING fcout delimited "$"
+       into fcout with pointer Fpnt
+     move "$" to fcout (Fpnt - 1:1)
+     STRING fcout delimited "$" "$"
+            Fsign delimited SIZE
+       into fcout.
+
+ SetFormatBastida.
+     INITIALIZE fcout
+     move 1 to Fpnt
+     move fcin to EDIT-DROP-LEAD-SPACES
+     move EDIT-DROP-LEAD-SPACES to fcout
+      STRING function REVERSE(fcout) delimited SPACE
+       into fcout with pointer Fpnt
+     move EDIT-DROP-LEAD-SPACES to fcout
+     INITIALIZE EDIT-DROP-LEAD-SPACES
+     COMPUTE Fpnt = function LENGTH(fcout) - Fpnt + 2
+     STRING fcout (Fpnt: ) EDIT-DROP-LEAD-SPACES
+     delimited size into fcout.
