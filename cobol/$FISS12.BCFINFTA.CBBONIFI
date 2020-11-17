@@ -23,7 +23,7 @@
 *******************************************************************
  IDENTIFICATION  DIVISION.
  PROGRAM-ID.     CBBONIFI.
- AUTHOR.         ASISTICA (FELIX NEVAREZ).
+ AUTHOR.        
 
 *******************************************************************
 *                ===== ENVIRONMENT DIVISION =====                 *
